@@ -194,11 +194,9 @@ This tool solves that. It tracks everyone you care about, filters the noise, and
 
 ## 🔧 Development
 
-See [AGENT.md](AGENT.md) for development guidelines and architecture details.
-
 **Run tests**:
 ```bash
-PYTHONPATH=src python3 -m unittest discover tests -v
+PYTHONPATH=src python -m unittest discover tests -v
 ```
 
 ## 📁 Project Structure

@@ -48,16 +48,17 @@
 pip install -r requirements.txt
 
 # Run the tracker
-python3 main.py [command]
+python main.py [command]
 ```
 
 ## Testing
 ```bash
 # Run all tests (unit + live integration)
-PYTHONPATH=src python3 -m unittest discover tests -v
+# Note: PYTHONPATH=src is required because the package is in src/artist_tracker/
+PYTHONPATH=src python -m unittest discover tests -v
 
 # Run live integration tests specifically
-PYTHONPATH=src python3 -m unittest tests/test_live.py -v
+PYTHONPATH=src python -m unittest tests/test_live.py -v
 ```
 
 ## Configuration
