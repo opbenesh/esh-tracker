@@ -24,7 +24,7 @@ python main.py track
 |---|---|---|
 | **track** | `python main.py track` | Fetch new releases for all tracked artists (default). |
 | **import-playlist** | `python main.py import-playlist <id>` | Import all artists from a Spotify playlist. |
-| **import-txt** | `python main.py import-txt <file>` | Import artists from a text file (names or URIs). |
+| **import-txt** | `python main.py import-txt <file>` | Import artists from a text file (or `-` for stdin). |
 | **list** | `python main.py list` | Show all artists in the database. |
 | **remove** | `python main.py remove <name>` | Remove an artist by name or ID. |
 | **export** | `python main.py export [file]` | Backup database to JSON. |
@@ -47,17 +47,9 @@ python main.py track
 First, register your favorite artists:
 
 ```bash
-$ echo "Converge\nTurnstile" > artists.txt
-$ python main.py import-txt artists.txt
-
-================================================================================
-IMPORT FROM TEXT FILE
-================================================================================
-Added: 2 artists
-Skipped (already exists): 0 artists
-
-Total artists in database: 2
-================================================================================
+$ printf "Converge\nTurnstile" | python main.py import-txt -
+Added: 2, Skipped: 0
+Total artists: 2
 ```
 
 Then, run the tracker to find their recent releases:
