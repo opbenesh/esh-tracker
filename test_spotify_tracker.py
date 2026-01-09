@@ -212,7 +212,7 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         }
 
         # Mock album tracks - same song on both releases
-        def mock_album_tracks(album_id, market):
+        def mock_album_tracks(album_id):
             if album_id == 'album1':
                 return {
                     'items': [
@@ -229,7 +229,7 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         tracker.sp.album_tracks.side_effect = mock_album_tracks
 
         # Mock track details with same ISRC
-        def mock_track(track_id, market):
+        def mock_track(track_id):
             return {
                 'id': track_id,
                 'name': 'Great Song',
@@ -283,7 +283,7 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         }
 
         # Mock album tracks
-        def mock_album_tracks(album_id, market):
+        def mock_album_tracks(album_id):
             return {
                 'items': [
                     {'id': f'{album_id}_track1', 'name': f'Track from {album_id}'}
@@ -293,7 +293,7 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         tracker.sp.album_tracks.side_effect = mock_album_tracks
 
         # Mock track details
-        def mock_track(track_id, market):
+        def mock_track(track_id):
             return {
                 'id': track_id,
                 'name': f'Track {track_id}',
@@ -367,6 +367,70 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         self.assertIn('missing_artists', results)
         self.assertEqual(results['total_releases'], 1)
 
+    def test_import_from_playlist_success(self):
+        """Test successful playlist import."""
+        # Mock playlist tracks
+        self.tracker.sp.playlist_tracks.return_value = {
+            'items': [
+                {
+                    'track': {
+                        'artists': [
+                            {'id': 'artist1', 'name': 'Artist One'},
+                            {'id': 'artist2', 'name': 'Artist Two'}
+                        ]
+                    }
+                }
+            ],
+            'next': None
+        }
+
+        # Mock database batch add
+        mock_db = Mock()
+        mock_db.add_artists_batch.return_value = (2, 0)
+
+        added, skipped = self.tracker.import_from_playlist('playlist123', mock_db)
+
+        self.assertEqual(added, 2)
+        self.assertEqual(skipped, 0)
+        self.tracker.sp.playlist_tracks.assert_called_once_with('playlist123')
+        mock_db.add_artists_batch.assert_called_once()
+
+    def test_import_from_playlist_pagination(self):
+        """Test playlist import with pagination."""
+        # Mock first page
+        self.tracker.sp.playlist_tracks.return_value = {
+            'items': [
+                {
+                    'track': {
+                        'artists': [{'id': 'artist1', 'name': 'Artist One'}]
+                    }
+                }
+            ],
+            'next': 'https://api.spotify.com/v1/playlists/123/tracks?offset=1'
+        }
+
+        # Mock second page
+        self.tracker.sp.next.return_value = {
+            'items': [
+                {
+                    'track': {
+                        'artists': [{'id': 'artist2', 'name': 'Artist Two'}]
+                    }
+                }
+            ],
+            'next': None
+        }
+
+        mock_db = Mock()
+        mock_db.add_artists_batch.return_value = (2, 0)
+
+        added, skipped = self.tracker.import_from_playlist('playlist123', mock_db)
+
+        self.assertEqual(added, 2)
+        self.tracker.sp.playlist_tracks.assert_called_once()
+        self.tracker.sp.next.assert_called_once()
+        mock_db.add_artists_batch.assert_called_once()
+
 
 class TestDateBoundaries(unittest.TestCase):
     """Specific tests for the 90-day boundary as per spec."""
@@ -404,6 +468,123 @@ class TestDateBoundaries(unittest.TestCase):
         # Release on 2024-03-02 (91 days ago) should be discarded
         release_date = datetime(2024, 3, 2)
         self.assertLess(release_date, tracker.cutoff_date)
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+
+class TestRetryLogic(unittest.TestCase):
+    """Test retry logic for API calls."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        with patch('spotify_tracker.SpotifyClientCredentials'):
+            with patch('spotify_tracker.spotipy.Spotify'):
+                self.tracker = SpotifyReleaseTracker(
+                    client_id='test_client_id',
+                    client_secret='test_client_secret'
+                )
+                self.tracker.sp = Mock()
+
+    @patch('spotify_tracker.time.sleep')
+    def test_retry_on_server_error(self, mock_sleep):
+        """Test that server errors (5xx) trigger retry."""
+        from spotipy.exceptions import SpotifyException
+        
+        # First call fails with 500, second succeeds
+        self.tracker.sp.search.side_effect = [
+            SpotifyException(500, -1, 'Server Error'),
+            {'artists': {'items': [{'id': 'artist123', 'name': 'Test'}]}}
+        ]
+        
+        result = self.tracker._search_artist('Test Artist')
+        
+        self.assertEqual(result, 'artist123')
+        self.assertEqual(self.tracker.sp.search.call_count, 2)
+        mock_sleep.assert_called()  # Should have slept between retries
+
+    @patch('spotify_tracker.time.sleep')
+    def test_retry_on_rate_limit(self, mock_sleep):
+        """Test rate limit (429) triggers retry with Retry-After header."""
+        from spotipy.exceptions import SpotifyException
+        
+        rate_limit_error = SpotifyException(429, -1, 'Rate Limited')
+        rate_limit_error.headers = {'Retry-After': '2'}
+        
+        # First call rate limited, second succeeds
+        self.tracker.sp.search.side_effect = [
+            rate_limit_error,
+            {'artists': {'items': [{'id': 'artist123', 'name': 'Test'}]}}
+        ]
+        
+        result = self.tracker._search_artist('Test Artist')
+        
+        self.assertEqual(result, 'artist123')
+        self.assertEqual(self.tracker.sp.search.call_count, 2)
+
+    def test_client_error_no_retry(self):
+        """Test that client errors (4xx except 429) don't trigger retry."""
+        from spotipy.exceptions import SpotifyException
+        from exceptions import SpotifyAPIError
+        
+        self.tracker.sp.search.side_effect = SpotifyException(400, -1, 'Bad Request')
+        
+        with self.assertRaises(SpotifyAPIError):
+            self.tracker._search_artist('Test Artist')
+        
+        # Should only be called once (no retry)
+        self.assertEqual(self.tracker.sp.search.call_count, 1)
+
+
+class TestErrorHandling(unittest.TestCase):
+    """Test error handling for various failure scenarios."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        with patch('spotify_tracker.SpotifyClientCredentials'):
+            with patch('spotify_tracker.spotipy.Spotify'):
+                self.tracker = SpotifyReleaseTracker(
+                    client_id='test_client_id',
+                    client_secret='test_client_secret'
+                )
+                self.tracker.sp = Mock()
+
+    def test_search_artist_api_error(self):
+        """Test that API errors are properly propagated."""
+        from spotipy.exceptions import SpotifyException
+        from exceptions import SpotifyAPIError
+        
+        self.tracker.sp.search.side_effect = SpotifyException(403, -1, 'Forbidden')
+        
+        with self.assertRaises(SpotifyAPIError):
+            self.tracker._search_artist('Test Artist')
+
+    def test_get_artist_name_returns_none_on_error(self):
+        """Test that get_artist_name returns None on error."""
+        self.tracker.sp.artist.side_effect = Exception('Network Error')
+        
+        result = self.tracker._get_artist_name('invalid_id')
+        
+        self.assertIsNone(result)
+
+    def test_get_recent_releases_returns_empty_on_error(self):
+        """Test that get_recent_releases returns empty list on error."""
+        self.tracker.sp.artist_albums.side_effect = Exception('API Error')
+        
+        result = self.tracker._get_recent_releases('invalid_id', 'Unknown')
+        
+        self.assertEqual(result, [])
+
+    def test_import_from_playlist_returns_zero_on_error(self):
+        """Test that import_from_playlist returns (0, 0) on error."""
+        self.tracker.sp.playlist_tracks.side_effect = Exception('Playlist Error')
+        
+        mock_db = Mock()
+        added, skipped = self.tracker.import_from_playlist('invalid_id', mock_db)
+        
+        self.assertEqual(added, 0)
+        self.assertEqual(skipped, 0)
 
 
 if __name__ == '__main__':

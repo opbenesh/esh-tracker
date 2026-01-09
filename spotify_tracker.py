@@ -52,9 +52,6 @@ class SpotifyReleaseTracker:
         'instrumental', 'karaoke'
     ]
 
-    # Market for regional filtering
-    MARKET = 'IL'
-
     # Lookback window in days
     LOOKBACK_DAYS = 90
 
@@ -244,8 +241,7 @@ class SpotifyReleaseTracker:
             return self.sp.search(
                 q=f'artist:{artist_name}',
                 type='artist',
-                limit=1,
-                market=self.MARKET
+                limit=1
             )
 
         try:
@@ -287,7 +283,8 @@ class SpotifyReleaseTracker:
     def _get_recent_releases(
         self,
         artist_id: str,
-        artist_name: str
+        artist_name: str,
+        max_tracks: Optional[int] = None
     ) -> List[Dict]:
         """
         Get recent releases for an artist.
@@ -295,6 +292,7 @@ class SpotifyReleaseTracker:
         Args:
             artist_id: Spotify artist ID
             artist_name: Artist name for logging
+            max_tracks: Optional cap on number of tracks to return (uses popularity ranking)
 
         Returns:
             List of release dictionaries with deduplication
@@ -333,7 +331,7 @@ class SpotifyReleaseTracker:
 
                 # Get tracks from album
                 album_id = album['id']
-                tracks_response = self.sp.album_tracks(album_id, market=self.MARKET)
+                tracks_response = self.sp.album_tracks(album_id)
                 tracks = tracks_response['items']
 
                 for track in tracks:
@@ -345,10 +343,11 @@ class SpotifyReleaseTracker:
                         continue
 
                     # Get ISRC for deduplication
-                    # Need to fetch full track details for ISRC
+                    # Need to fetch full track details for ISRC and popularity
                     try:
-                        full_track = self.sp.track(track['id'], market=self.MARKET)
+                        full_track = self.sp.track(track['id'])
                         isrc = full_track.get('external_ids', {}).get('isrc')
+                        popularity = full_track.get('popularity', 0)
 
                         if isrc:
                             if isrc in seen_isrcs:
@@ -366,7 +365,8 @@ class SpotifyReleaseTracker:
                             'release_date': release_date.strftime('%Y-%m-%d'),
                             'album_type': album['album_type'],
                             'isrc': isrc or 'N/A',
-                            'spotify_url': full_track['external_urls']['spotify']
+                            'spotify_url': full_track['external_urls']['spotify'],
+                            'popularity': popularity
                         })
 
                     except Exception as e:
@@ -374,6 +374,14 @@ class SpotifyReleaseTracker:
                             f"Error fetching track details for '{track['name']}': {e}"
                         )
                         continue
+
+            # Apply max_tracks cap using popularity ranking
+            if max_tracks and len(releases) > max_tracks:
+                logger.info(
+                    f"Capping {len(releases)} releases to top {max_tracks} by popularity for '{artist_name}'"
+                )
+                releases.sort(key=lambda x: x['popularity'], reverse=True)
+                releases = releases[:max_tracks]
 
             logger.info(
                 f"Found {len(releases)} unique recent releases for '{artist_name}'"
@@ -383,6 +391,7 @@ class SpotifyReleaseTracker:
         except Exception as e:
             logger.error(f"Error fetching releases for '{artist_name}': {e}")
             return []
+
 
     def _process_artist(
         self,
@@ -500,7 +509,7 @@ class SpotifyReleaseTracker:
 
         try:
             # Get playlist tracks
-            results = self.sp.playlist_tracks(playlist_id, market=self.MARKET)
+            results = self.sp.playlist_tracks(playlist_id)
             tracks = results['items']
 
             # Handle pagination
@@ -662,8 +671,109 @@ class SpotifyReleaseTracker:
             'missing_artists': missing_artists
         }
 
+    def track_from_playlist_onetime(
+        self,
+        playlist_id: str,
+        max_tracks_per_artist: Optional[int] = None
+    ) -> Dict:
+        """
+        One-time session: Track releases from a playlist without persisting to DB.
+
+        Args:
+            playlist_id: Spotify playlist ID, URI, or URL
+            max_tracks_per_artist: Optional cap on tracks per artist (uses popularity ranking)
+
+        Returns:
+            Dictionary with results and statistics
+        """
+        logger.info(f"One-time session: tracking releases from playlist {playlist_id}...")
+
+        # Extract playlist ID from URL or URI if needed
+        if 'spotify.com' in playlist_id:
+            # Extract from URL like https://open.spotify.com/playlist/6z5jMLEBI3t9sgQ3XDKOJ0?si=...
+            match = re.search(r'playlist/([a-zA-Z0-9]+)', playlist_id)
+            if match:
+                playlist_id = match.group(1)
+        elif ':' in playlist_id:
+            playlist_id = playlist_id.split(':')[-1]
+
+        try:
+            # Get playlist tracks
+            results = self.sp.playlist_tracks(playlist_id)
+            tracks = results['items']
+
+            # Handle pagination
+            while results['next']:
+                results = self.sp.next(results)
+                tracks.extend(results['items'])
+
+            # Extract unique artists (in memory only, no DB)
+            artists_dict = {}  # artist_id -> artist_name
+            for item in tracks:
+                if item['track'] and item['track']['artists']:
+                    for artist in item['track']['artists']:
+                        artist_id = artist['id']
+                        artist_name = artist['name']
+                        if artist_id:  # Some local files may not have IDs
+                            artists_dict[artist_id] = artist_name
+
+            logger.info(f"Found {len(artists_dict)} unique artists in playlist")
+
+            if not artists_dict:
+                return {
+                    'releases': [],
+                    'total_releases': 0,
+                    'artists_processed': 0,
+                    'missing_artists': []
+                }
+
+            # Track releases for each artist (in memory)
+            all_releases = []
+            processed_count = 0
+
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                future_to_artist = {
+                    executor.submit(
+                        self._get_recent_releases, artist_id, artist_name, max_tracks_per_artist
+                    ): (artist_id, artist_name)
+                    for artist_id, artist_name in artists_dict.items()
+                }
+
+
+                with tqdm(total=len(future_to_artist), desc="Tracking artists", unit="artist") as pbar:
+                    for future in as_completed(future_to_artist):
+                        artist_id, artist_name = future_to_artist[future]
+                        try:
+                            releases = future.result()
+                            if releases:
+                                all_releases.extend(releases)
+                                processed_count += 1
+                        except Exception as e:
+                            logger.error(f"Error processing artist '{artist_name}': {e}")
+                        pbar.update(1)
+
+            # Sort releases by date (newest first)
+            all_releases.sort(key=lambda x: x['release_date'], reverse=True)
+
+            return {
+                'releases': all_releases,
+                'total_releases': len(all_releases),
+                'artists_processed': processed_count,
+                'artists_in_playlist': len(artists_dict)
+            }
+
+        except Exception as e:
+            logger.error(f"Error in one-time playlist session: {e}")
+            return {
+                'releases': [],
+                'total_releases': 0,
+                'artists_processed': 0,
+                'error': str(e)
+            }
+
 
 def cmd_import_txt(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
+
     """Handle import-txt command with error handling."""
     try:
         added, skipped, failed = tracker.import_from_txt(args.file, db)
@@ -894,7 +1004,49 @@ def cmd_remove(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
         sys.exit(1)
 
 
+def cmd_debug_playlist(args, tracker: SpotifyReleaseTracker):
+    """Handle debug-playlist command (one-time session, no DB persistence)."""
+    try:
+        max_per_artist = getattr(args, 'max_per_artist', None)
+        results = tracker.track_from_playlist_onetime(args.playlist, max_per_artist)
+
+        print("\n" + "="*80)
+        print("ONE-TIME PLAYLIST SESSION (No data stored)")
+        print("="*80)
+        
+        if 'error' in results:
+            print(f"❌ Error: {results['error']}")
+            print("="*80 + "\n")
+            return
+
+        print(f"Artists in Playlist: {results.get('artists_in_playlist', 0)}")
+        print(f"Artists with Releases: {results['artists_processed']}")
+        print(f"Total Releases Found: {results['total_releases']}")
+        if max_per_artist:
+            print(f"Max Tracks per Artist: {max_per_artist}")
+        print("="*80 + "\n")
+
+        # Print releases
+        if results['releases']:
+            for release in results['releases']:
+                popularity_str = f" (pop: {release.get('popularity', 'N/A')})"
+                print(f"🎵 {release['artist']} - {release['track']}{popularity_str}")
+                print(f"   Album: {release['album']} ({release['album_type']})")
+                print(f"   Released: {release['release_date']}")
+                print(f"   ISRC: {release['isrc']}")
+                print(f"   URL: {release['spotify_url']}")
+                print()
+        else:
+            print("No recent releases found.\n")
+
+    except Exception as e:
+        logger.error(f"Debug playlist failed: {e}", exc_info=True)
+        print(f"\n❌ Error: {e}")
+        print("Check app.log for details.\n")
+
+
 def main():
+
     """Main entry point with CLI commands."""
     # Load environment variables
     load_dotenv()
@@ -997,6 +1149,22 @@ Examples:
         help='Artist name or Spotify ID to remove'
     )
 
+    # debug-playlist command (one-time session)
+    parser_debug_playlist = subparsers.add_parser(
+        'debug-playlist',
+        help='One-time session: track releases from a playlist without storing to DB'
+    )
+    parser_debug_playlist.add_argument(
+        'playlist',
+        help='Spotify playlist ID, URI, or URL'
+    )
+    parser_debug_playlist.add_argument(
+        '--max-per-artist', '-m',
+        type=int,
+        default=None,
+        help='Cap number of tracks per artist (uses popularity ranking)'
+    )
+
     args = parser.parse_args()
 
     # Default to 'track' command if none specified
@@ -1033,6 +1201,8 @@ Examples:
         cmd_export(args, tracker, db)
     elif args.command == 'remove':
         cmd_remove(args, tracker, db)
+    elif args.command == 'debug-playlist':
+        cmd_debug_playlist(args, tracker)
     else:
         parser.print_help()
 

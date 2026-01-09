@@ -217,6 +217,21 @@ class TestLivePlaylistImport(unittest.TestCase):
         self.assertIsNotNone(artist)
         self.assertEqual(artist[2], 'Adele')
 
+    def test_import_from_playlist_real(self):
+        """End-to-end test: import from a real playlist and verify DB."""
+        # Use a well-known public playlist
+        # ID: 5ABHKGoOzxkaa28ttQV9sE (Top 100 most streamed songs)
+        playlist_id = '5ABHKGoOzxkaa28ttQV9sE'
+        
+        added, skipped = self.tracker.import_from_playlist(playlist_id, self.db)
+        
+        # We should have added some artists
+        self.assertGreater(added + skipped, 0)
+        
+        # Verify database count
+        count = self.db.get_artist_count()
+        self.assertEqual(count, added + skipped)
+
 
 @unittest.skipUnless(has_spotify_credentials(), "No Spotify credentials in .env")
 class TestLiveEndToEnd(unittest.TestCase):
@@ -320,6 +335,217 @@ class TestAPIResponseFormat(unittest.TestCase):
             if 'isrc' in track['external_ids']:
                 isrc = track['external_ids']['isrc']
                 self.assertEqual(len(isrc), 12)
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+
+@unittest.skipUnless(has_spotify_credentials(), "No Spotify credentials in .env")
+class TestLiveImportFromTxt(unittest.TestCase):
+    """Test importing artists from text files with real API calls."""
+
+    def setUp(self):
+        """Initialize tracker and fresh database for each test."""
+        from spotify_tracker import SpotifyReleaseTracker
+        from artist_database import ArtistDatabase
+        import tempfile
+        
+        self.tracker = SpotifyReleaseTracker(
+            os.getenv('SPOTIPY_CLIENT_ID'),
+            os.getenv('SPOTIPY_CLIENT_SECRET')
+        )
+        self.temp_db = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        self.db = ArtistDatabase(self.temp_db.name)
+        self.temp_txt = None
+
+    def tearDown(self):
+        """Clean up temp files."""
+        import os as os_module
+        try:
+            os_module.unlink(self.temp_db.name)
+        except:
+            pass
+        if self.temp_txt:
+            try:
+                os_module.unlink(self.temp_txt)
+            except:
+                pass
+
+    def test_import_txt_with_artist_names(self):
+        """End-to-end test: import artists by name from txt file."""
+        import tempfile
+        
+        # Create temp txt file with artist names
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write("Taylor Swift\n")
+            f.write("Ed Sheeran\n")
+            f.write("# This is a comment\n")
+            f.write("\n")  # Empty line
+            f.write("Adele\n")
+            self.temp_txt = f.name
+        
+        added, skipped, failed = self.tracker.import_from_txt(self.temp_txt, self.db)
+        
+        # Should have added 3 artists
+        self.assertEqual(added, 3)
+        self.assertEqual(len(failed), 0)
+        self.assertEqual(self.db.get_artist_count(), 3)
+
+    def test_import_txt_with_spotify_uris(self):
+        """End-to-end test: import artists by Spotify URI from txt file."""
+        import tempfile
+        
+        # Create temp txt file with Spotify URIs
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            # Taylor Swift's URI
+            f.write("spotify:artist:06HL4z0CvFAxyc27GXpf02\n")
+            # Ed Sheeran's URI
+            f.write("spotify:artist:6eUKZXaKkcviH0Ku9w2n3V\n")
+            self.temp_txt = f.name
+        
+        added, skipped, failed = self.tracker.import_from_txt(self.temp_txt, self.db)
+        
+        self.assertEqual(added, 2)
+        self.assertEqual(len(failed), 0)
+        
+        # Verify correct artists were added
+        artist = self.db.get_artist_by_id('06HL4z0CvFAxyc27GXpf02')
+        self.assertIsNotNone(artist)
+        self.assertEqual(artist[2], 'Taylor Swift')
+
+    def test_import_txt_with_nonexistent_artist(self):
+        """Test that nonexistent artists are reported as failed."""
+        import tempfile
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write("Taylor Swift\n")
+            f.write("xyznonexistentartist12345xyz\n")
+            self.temp_txt = f.name
+        
+        added, skipped, failed = self.tracker.import_from_txt(self.temp_txt, self.db)
+        
+        self.assertEqual(added, 1)
+        self.assertEqual(len(failed), 1)
+        self.assertIn('xyznonexistentartist12345xyz', failed)
+
+
+@unittest.skipUnless(has_spotify_credentials(), "No Spotify credentials in .env")
+class TestLiveISRCDeduplication(unittest.TestCase):
+    """Test ISRC-based deduplication with real Spotify data."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Initialize tracker once for all tests."""
+        from spotify_tracker import SpotifyReleaseTracker
+        
+        cls.tracker = SpotifyReleaseTracker(
+            os.getenv('SPOTIPY_CLIENT_ID'),
+            os.getenv('SPOTIPY_CLIENT_SECRET')
+        )
+
+    def test_isrc_deduplication_removes_duplicates(self):
+        """Verify that duplicate ISRCs are filtered out in release results."""
+        # Taylor Swift's Spotify ID - she often has singles that appear on albums
+        taylor_id = '06HL4z0CvFAxyc27GXpf02'
+        
+        releases = self.tracker._get_recent_releases(taylor_id, 'Taylor Swift')
+        
+        # Collect all ISRCs
+        isrcs = [r['isrc'] for r in releases if r['isrc'] != 'N/A']
+        
+        # Verify no duplicate ISRCs (all should be unique)
+        self.assertEqual(len(isrcs), len(set(isrcs)), 
+            f"Found duplicate ISRCs: {[isrc for isrc in isrcs if isrcs.count(isrc) > 1]}")
+
+
+@unittest.skipUnless(has_spotify_credentials(), "No Spotify credentials in .env")
+class TestLiveNoiseFiltering(unittest.TestCase):
+    """Test noise filtering (live, remaster, demo, etc.) with real data."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Initialize tracker once for all tests."""
+        from spotify_tracker import SpotifyReleaseTracker
+        
+        cls.tracker = SpotifyReleaseTracker(
+            os.getenv('SPOTIPY_CLIENT_ID'),
+            os.getenv('SPOTIPY_CLIENT_SECRET')
+        )
+
+    def test_no_live_versions_in_results(self):
+        """Verify that 'Live' versions are filtered out."""
+        # Taylor Swift often has live versions
+        taylor_id = '06HL4z0CvFAxyc27GXpf02'
+        
+        releases = self.tracker._get_recent_releases(taylor_id, 'Taylor Swift')
+        
+        for release in releases:
+            album_lower = release['album'].lower()
+            track_lower = release['track'].lower()
+            self.assertNotIn('live', album_lower, 
+                f"Live version found in album: {release['album']}")
+            self.assertNotIn('live', track_lower, 
+                f"Live version found in track: {release['track']}")
+
+    def test_no_remastered_versions_in_results(self):
+        """Verify that remastered versions are filtered out."""
+        taylor_id = '06HL4z0CvFAxyc27GXpf02'
+        
+        releases = self.tracker._get_recent_releases(taylor_id, 'Taylor Swift')
+        
+        for release in releases:
+            album_lower = release['album'].lower()
+            track_lower = release['track'].lower()
+            self.assertNotIn('remaster', album_lower, 
+                f"Remastered found in album: {release['album']}")
+            self.assertNotIn('remaster', track_lower, 
+                f"Remastered found in track: {release['track']}")
+
+
+@unittest.skipUnless(has_spotify_credentials(), "No Spotify credentials in .env")
+class TestLiveErrorHandling(unittest.TestCase):
+    """Test error handling with real API calls."""
+
+    def setUp(self):
+        """Initialize tracker and fresh database for each test."""
+        from spotify_tracker import SpotifyReleaseTracker
+        from artist_database import ArtistDatabase
+        import tempfile
+        
+        self.tracker = SpotifyReleaseTracker(
+            os.getenv('SPOTIPY_CLIENT_ID'),
+            os.getenv('SPOTIPY_CLIENT_SECRET')
+        )
+        self.temp_db = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
+        self.db = ArtistDatabase(self.temp_db.name)
+
+    def tearDown(self):
+        """Clean up temp database."""
+        import os as os_module
+        try:
+            os_module.unlink(self.temp_db.name)
+        except:
+            pass
+
+    def test_invalid_playlist_id_returns_zero(self):
+        """Test that invalid playlist ID returns (0, 0) gracefully."""
+        added, skipped = self.tracker.import_from_playlist('invalid_playlist_id_12345', self.db)
+        
+        self.assertEqual(added, 0)
+        self.assertEqual(skipped, 0)
+
+    def test_invalid_artist_id_returns_none(self):
+        """Test that invalid artist ID returns None for name lookup."""
+        name = self.tracker._get_artist_name('invalid_artist_id_12345')
+        
+        self.assertIsNone(name)
+
+    def test_releases_for_invalid_artist_returns_empty(self):
+        """Test that releases for invalid artist returns empty list."""
+        releases = self.tracker._get_recent_releases('invalid_artist_id', 'Unknown')
+        
+        self.assertEqual(releases, [])
 
 
 if __name__ == '__main__':
