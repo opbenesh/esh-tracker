@@ -22,7 +22,7 @@ python main.py track
 
 | Command | Usage | Description |
 |---|---|---|
-| **track** | `python main.py track` | Fetch new releases for all tracked artists (default). |
+| **track** | `python main.py track [-p]` | Fetch releases. Default is TSV. Use `-p` for pretty output. |
 | **import-playlist** | `python main.py import-playlist <id>` | Import all artists from a Spotify playlist. |
 | **import-txt** | `python main.py import-txt <file>` | Import artists from a text file (or `-` for stdin). |
 | **list** | `python main.py list` | Show all artists in the database. |
@@ -52,26 +52,30 @@ Added: 2, Skipped: 0
 Total artists: 2
 ```
 
-Then, run the tracker to find their recent releases:
 
-```
+Then, run the tracker. By default, it outputs Tab-Separated Values (TSV) for easy processing:
+
+```bash
 $ python main.py track
+2026-01-15	Converge	Atonement (Redux)	Atonement	single	USUG11900199	https://open.spotify.com/track/4kb...
+2026-01-08	Turnstile	New Heart Design (Remix)	New Heart Design	single	USCM52201235	https://open.spotify.com/track/67b...
+```
+
+For human-readable output, use `--pretty`:
+
+```bash
+$ python main.py track --pretty
 
 ================================================================================
 SPOTIFY RECENT RELEASE TRACKER
 ================================================================================
-Cutoff Date: 2025-12-01 (90 days ago)
-Total Artists in DB: 2
-Total Releases Found: 2
-Artists with Releases: 2
-================================================================================
-
+...
 🎵 Converge - Atonement (Redux)
    Album: Atonement (single)
    Released: 2026-01-15
    ISRC: USUG11900199
    URL: https://open.spotify.com/track/4kbjBiBMv5dZ3eH78f9
-   Popularity: 45
+```
 
 🎵 Turnstile - New Heart Design (Remix)
    Album: New Heart Design (single)
