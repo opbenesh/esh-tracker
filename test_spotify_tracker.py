@@ -1,0 +1,400 @@
+#!/usr/bin/env python3
+"""
+Unit tests for Spotify Release Tracker.
+
+All tests use mocked Spotify API - no network calls are made.
+"""
+
+import unittest
+from datetime import datetime, timedelta
+from unittest.mock import Mock, patch, mock_open
+from spotify_tracker import SpotifyReleaseTracker
+
+
+class TestSpotifyReleaseTracker(unittest.TestCase):
+    """Test suite for SpotifyReleaseTracker."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Mock the SpotifyClientCredentials to prevent network calls
+        with patch('spotify_tracker.SpotifyClientCredentials'):
+            with patch('spotify_tracker.spotipy.Spotify'):
+                self.tracker = SpotifyReleaseTracker(
+                    client_id='test_client_id',
+                    client_secret='test_client_secret'
+                )
+                # Mock the Spotify client
+                self.tracker.sp = Mock()
+
+    def test_parse_artist_input_name(self):
+        """Test parsing artist name input."""
+        artist_id, artist_name = self.tracker._parse_artist_input('Taylor Swift')
+        self.assertIsNone(artist_id)
+        self.assertEqual(artist_name, 'Taylor Swift')
+
+    def test_parse_artist_input_uri(self):
+        """Test parsing Spotify URI input."""
+        artist_id, artist_name = self.tracker._parse_artist_input(
+            'spotify:artist:06HL4z0CvFAxyc27GXpf02'
+        )
+        self.assertEqual(artist_id, '06HL4z0CvFAxyc27GXpf02')
+        self.assertIsNone(artist_name)
+
+    def test_parse_artist_input_comment(self):
+        """Test parsing comment lines."""
+        artist_id, artist_name = self.tracker._parse_artist_input('# Comment')
+        self.assertIsNone(artist_id)
+        self.assertIsNone(artist_name)
+
+    def test_parse_artist_input_empty(self):
+        """Test parsing empty lines."""
+        artist_id, artist_name = self.tracker._parse_artist_input('')
+        self.assertIsNone(artist_id)
+        self.assertIsNone(artist_name)
+
+    def test_parse_release_date_full(self):
+        """Test parsing full date (YYYY-MM-DD)."""
+        date = self.tracker._parse_release_date('2024-03-15')
+        self.assertEqual(date, datetime(2024, 3, 15))
+
+    def test_parse_release_date_year_month(self):
+        """Test parsing year-month date (YYYY-MM)."""
+        date = self.tracker._parse_release_date('2024-03')
+        # Should default to first day of month
+        self.assertEqual(date, datetime(2024, 3, 1))
+
+    def test_parse_release_date_year_only(self):
+        """Test parsing year-only date (YYYY)."""
+        date = self.tracker._parse_release_date('2024')
+        # Should default to January 1st
+        self.assertEqual(date, datetime(2024, 1, 1))
+
+    def test_parse_release_date_invalid(self):
+        """Test parsing invalid date."""
+        date = self.tracker._parse_release_date('invalid-date')
+        self.assertIsNone(date)
+
+    @patch('spotify_tracker.datetime')
+    def test_lookback_window_boundary_keep(self, mock_datetime):
+        """Test that releases exactly 90 days ago are kept."""
+        # Fixed current date: 2024-06-01
+        mock_datetime.now.return_value = datetime(2024, 6, 1)
+        mock_datetime.strptime = datetime.strptime
+
+        # Reinitialize tracker with mocked date
+        with patch('spotify_tracker.SpotifyClientCredentials'):
+            with patch('spotify_tracker.spotipy.Spotify'):
+                tracker = SpotifyReleaseTracker('test_id', 'test_secret')
+                tracker.sp = Mock()
+
+        # Date exactly 90 days ago: 2024-03-03
+        cutoff = datetime(2024, 6, 1) - timedelta(days=90)
+        self.assertEqual(cutoff.date(), datetime(2024, 3, 3).date())
+
+        # Release on 2024-03-03 should be kept
+        release_date = datetime(2024, 3, 3)
+        self.assertGreaterEqual(release_date, tracker.cutoff_date)
+
+    @patch('spotify_tracker.datetime')
+    def test_lookback_window_boundary_discard(self, mock_datetime):
+        """Test that releases 91 days ago are discarded."""
+        # Fixed current date: 2024-06-01
+        mock_datetime.now.return_value = datetime(2024, 6, 1)
+        mock_datetime.strptime = datetime.strptime
+
+        # Reinitialize tracker with mocked date
+        with patch('spotify_tracker.SpotifyClientCredentials'):
+            with patch('spotify_tracker.spotipy.Spotify'):
+                tracker = SpotifyReleaseTracker('test_id', 'test_secret')
+                tracker.sp = Mock()
+
+        # Date 91 days ago: 2024-03-02
+        old_date = datetime(2024, 6, 1) - timedelta(days=91)
+        self.assertEqual(old_date.date(), datetime(2024, 3, 2).date())
+
+        # Release on 2024-03-02 should be discarded
+        release_date = datetime(2024, 3, 2)
+        self.assertLess(release_date, tracker.cutoff_date)
+
+    def test_is_noise_live(self):
+        """Test noise detection for 'Live' keyword."""
+        self.assertTrue(self.tracker._is_noise('Song Name (Live)'))
+        self.assertTrue(self.tracker._is_noise('LIVE Performance'))
+        self.assertFalse(self.tracker._is_noise('Regular Song'))
+
+    def test_is_noise_remaster(self):
+        """Test noise detection for 'Remaster' keyword."""
+        self.assertTrue(self.tracker._is_noise('Classic Song - Remastered'))
+        self.assertTrue(self.tracker._is_noise('2024 REMASTER'))
+        self.assertFalse(self.tracker._is_noise('New Release'))
+
+    def test_is_noise_demo(self):
+        """Test noise detection for 'Demo' keyword."""
+        self.assertTrue(self.tracker._is_noise('Song Demo'))
+        self.assertFalse(self.tracker._is_noise('Love Story'))
+
+    def test_is_noise_multiple_keywords(self):
+        """Test noise detection with multiple keywords."""
+        self.assertTrue(self.tracker._is_noise('Song (Live Remastered)'))
+        self.assertTrue(self.tracker._is_noise('Demo - Instrumental'))
+
+    def test_search_artist_success(self):
+        """Test successful artist search."""
+        # Mock successful search
+        self.tracker.sp.search.return_value = {
+            'artists': {
+                'items': [
+                    {
+                        'id': 'artist123',
+                        'name': 'Taylor Swift'
+                    }
+                ]
+            }
+        }
+
+        artist_id = self.tracker._search_artist('Taylor Swift')
+        self.assertEqual(artist_id, 'artist123')
+        self.tracker.sp.search.assert_called_once()
+
+    def test_search_artist_not_found(self):
+        """Test artist search with no results."""
+        # Mock empty search results
+        self.tracker.sp.search.return_value = {
+            'artists': {
+                'items': []
+            }
+        }
+
+        artist_id = self.tracker._search_artist('NonexistentArtist')
+        self.assertIsNone(artist_id)
+
+    def test_get_artist_name_success(self):
+        """Test getting artist name by ID."""
+        # Mock artist fetch
+        self.tracker.sp.artist.return_value = {
+            'name': 'Taylor Swift',
+            'id': 'artist123'
+        }
+
+        name = self.tracker._get_artist_name('artist123')
+        self.assertEqual(name, 'Taylor Swift')
+
+    @patch('spotify_tracker.datetime')
+    def test_isrc_deduplication(self, mock_datetime):
+        """Test ISRC-based deduplication."""
+        # Fixed current date
+        mock_datetime.now.return_value = datetime(2024, 6, 1)
+        mock_datetime.strptime = datetime.strptime
+
+        with patch('spotify_tracker.SpotifyClientCredentials'):
+            with patch('spotify_tracker.spotipy.Spotify'):
+                tracker = SpotifyReleaseTracker('test_id', 'test_secret')
+                tracker.sp = Mock()
+
+        # Mock albums with duplicate ISRCs
+        tracker.sp.artist_albums.return_value = {
+            'items': [
+                {
+                    'id': 'album1',
+                    'name': 'Single Release',
+                    'release_date': '2024-05-15',
+                    'album_type': 'single',
+                    'external_urls': {'spotify': 'https://open.spotify.com/album/1'}
+                },
+                {
+                    'id': 'album2',
+                    'name': 'Full Album',
+                    'release_date': '2024-05-20',
+                    'album_type': 'album',
+                    'external_urls': {'spotify': 'https://open.spotify.com/album/2'}
+                }
+            ]
+        }
+
+        # Mock album tracks - same song on both releases
+        def mock_album_tracks(album_id, market):
+            if album_id == 'album1':
+                return {
+                    'items': [
+                        {'id': 'track1', 'name': 'Great Song'}
+                    ]
+                }
+            else:  # album2
+                return {
+                    'items': [
+                        {'id': 'track2', 'name': 'Great Song'}  # Same song
+                    ]
+                }
+
+        tracker.sp.album_tracks.side_effect = mock_album_tracks
+
+        # Mock track details with same ISRC
+        def mock_track(track_id, market):
+            return {
+                'id': track_id,
+                'name': 'Great Song',
+                'external_ids': {'isrc': 'USABC1234567'},  # Same ISRC
+                'external_urls': {'spotify': f'https://open.spotify.com/track/{track_id}'}
+            }
+
+        tracker.sp.track.side_effect = mock_track
+
+        # Get releases
+        releases = tracker._get_recent_releases('artist123', 'Test Artist')
+
+        # Should only get 1 release due to ISRC deduplication
+        self.assertEqual(len(releases), 1)
+        self.assertEqual(releases[0]['isrc'], 'USABC1234567')
+
+    @patch('spotify_tracker.datetime')
+    def test_get_recent_releases_integration(self, mock_datetime):
+        """Integration test for getting recent releases."""
+        # Fixed current date: 2024-06-01
+        mock_datetime.now.return_value = datetime(2024, 6, 1)
+        mock_datetime.strptime = datetime.strptime
+
+        with patch('spotify_tracker.SpotifyClientCredentials'):
+            with patch('spotify_tracker.spotipy.Spotify'):
+                tracker = SpotifyReleaseTracker('test_id', 'test_secret')
+                tracker.sp = Mock()
+
+        # Mock albums
+        tracker.sp.artist_albums.return_value = {
+            'items': [
+                {
+                    'id': 'album1',
+                    'name': 'Recent Album',
+                    'release_date': '2024-05-15',
+                    'album_type': 'album',
+                },
+                {
+                    'id': 'album2',
+                    'name': 'Old Album',
+                    'release_date': '2023-01-01',  # Too old
+                    'album_type': 'album',
+                },
+                {
+                    'id': 'album3',
+                    'name': 'Live Performance',  # Noise
+                    'release_date': '2024-05-20',
+                    'album_type': 'album',
+                }
+            ]
+        }
+
+        # Mock album tracks
+        def mock_album_tracks(album_id, market):
+            return {
+                'items': [
+                    {'id': f'{album_id}_track1', 'name': f'Track from {album_id}'}
+                ]
+            }
+
+        tracker.sp.album_tracks.side_effect = mock_album_tracks
+
+        # Mock track details
+        def mock_track(track_id, market):
+            return {
+                'id': track_id,
+                'name': f'Track {track_id}',
+                'external_ids': {'isrc': f'ISRC{track_id}'},
+                'external_urls': {'spotify': f'https://open.spotify.com/track/{track_id}'}
+            }
+
+        tracker.sp.track.side_effect = mock_track
+
+        # Get releases
+        releases = tracker._get_recent_releases('artist123', 'Test Artist')
+
+        # Should only get 1 release (album1)
+        # album2 is too old, album3 contains "Live"
+        self.assertEqual(len(releases), 1)
+        self.assertEqual(releases[0]['album'], 'Recent Album')
+
+    def test_track_artists_missing_file(self):
+        """Test handling of missing artists file."""
+        results = self.tracker.track_artists('nonexistent_file.txt')
+        self.assertIn('error', results)
+
+    @patch('builtins.open', new_callable=mock_open, read_data='Taylor Swift\nspotify:artist:123\n# Comment\n')
+    @patch('spotify_tracker.ThreadPoolExecutor')
+    def test_track_artists_integration(self, mock_executor, mock_file):
+        """Integration test for tracking multiple artists."""
+        # Mock concurrent execution to run synchronously for testing
+        def mock_submit(fn, arg):
+            mock_future = Mock()
+            mock_future.result.return_value = fn(arg)
+            return mock_future
+
+        mock_executor_instance = Mock(spec=['submit', '__enter__', '__exit__'])
+        mock_executor_instance.__enter__ = Mock(return_value=mock_executor_instance)
+        mock_executor_instance.__exit__ = Mock(return_value=None)
+        mock_executor_instance.submit.side_effect = mock_submit
+        mock_executor.return_value = mock_executor_instance
+
+        # Mock the process_artist method
+        def mock_process_artist(artist_input):
+            if 'Taylor Swift' in artist_input:
+                return ('Taylor Swift', [
+                    {
+                        'artist': 'Taylor Swift',
+                        'album': 'Test Album',
+                        'track': 'Test Track',
+                        'release_date': '2024-05-15',
+                        'album_type': 'album',
+                        'isrc': 'TEST123',
+                        'spotify_url': 'https://spotify.com/track/1'
+                    }
+                ])
+            return (None, [])
+
+        self.tracker._process_artist = mock_process_artist
+
+        results = self.tracker.track_artists('artists.txt')
+
+        self.assertIn('releases', results)
+        self.assertIn('total_releases', results)
+        self.assertIn('missing_artists', results)
+        self.assertEqual(results['total_releases'], 1)
+
+
+class TestDateBoundaries(unittest.TestCase):
+    """Specific tests for the 90-day boundary as per spec."""
+
+    @patch('spotify_tracker.datetime')
+    @patch('spotify_tracker.SpotifyClientCredentials')
+    @patch('spotify_tracker.spotipy.Spotify')
+    def test_spec_example_90_days_keep(self, mock_spotify, mock_creds, mock_datetime):
+        """Test spec example: Date 2024-03-03 (90 days ago) -> KEEP."""
+        # Current date: 2024-06-01
+        mock_datetime.now.return_value = datetime(2024, 6, 1)
+        mock_datetime.strptime = datetime.strptime
+
+        tracker = SpotifyReleaseTracker('test_id', 'test_secret')
+
+        # Cutoff should be 2024-03-03
+        expected_cutoff = datetime(2024, 3, 3)
+        self.assertEqual(tracker.cutoff_date.date(), expected_cutoff.date())
+
+        # Release on 2024-03-03 should be kept
+        release_date = datetime(2024, 3, 3)
+        self.assertGreaterEqual(release_date, tracker.cutoff_date)
+
+    @patch('spotify_tracker.datetime')
+    @patch('spotify_tracker.SpotifyClientCredentials')
+    @patch('spotify_tracker.spotipy.Spotify')
+    def test_spec_example_91_days_discard(self, mock_spotify, mock_creds, mock_datetime):
+        """Test spec example: Date 2024-03-02 (91 days ago) -> DISCARD."""
+        # Current date: 2024-06-01
+        mock_datetime.now.return_value = datetime(2024, 6, 1)
+        mock_datetime.strptime = datetime.strptime
+
+        tracker = SpotifyReleaseTracker('test_id', 'test_secret')
+
+        # Release on 2024-03-02 (91 days ago) should be discarded
+        release_date = datetime(2024, 3, 2)
+        self.assertLess(release_date, tracker.cutoff_date)
+
+
+if __name__ == '__main__':
+    unittest.main()
