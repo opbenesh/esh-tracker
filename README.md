@@ -13,8 +13,15 @@ A Python tool to track recent releases (last 90 days) from your favorite Spotify
 - ✅ **SQLite Database Storage**: Stores tracked artists with date added, name, and Spotify ID
 - ✅ **Import from Text Files**: Add artists from text files with names or Spotify URIs
 - ✅ **Import from Playlists**: Extract and track all artists from any Spotify playlist
-- ✅ **CLI Commands**: Easy-to-use commands (import-txt, import-playlist, list, track)
+- ✅ **Database Backup & Restore**: Export and import database to/from JSON files
+- ✅ **Remove Artists**: Delete artists from database by name or Spotify ID
+- ✅ **CLI Commands**: Easy-to-use commands (import-txt, import-playlist, import-json, export, remove, list, track)
+- ✅ **Progress Bars**: Visual feedback with tqdm during long-running operations
 - ✅ **Concurrent Processing**: Processes multiple artists in parallel using ThreadPoolExecutor
+- ✅ **Retry Logic**: Exponential backoff for transient failures and rate limiting
+- ✅ **Input Validation**: Validates Spotify IDs and artist names with detailed error messages
+- ✅ **Custom Exceptions**: Specific exception types for better error handling
+- ✅ **Configuration Management**: Centralized configuration with environment variable support
 - ✅ **90-Day Lookback**: Strict date filtering for releases within the last 90 days
 - ✅ **Partial Date Handling**: Handles year-only and year-month dates (defaults to January 1st)
 - ✅ **Regional Filtering**: Filters results for Israel market (`IL`) to show only playable tracks
@@ -154,11 +161,54 @@ python spotify_tracker.py
 
 The tracker will:
 1. Load all artists from the database
-2. Fetch releases from the last 90 days for each artist
+2. Fetch releases from the last 90 days for each artist (with progress bar)
 3. Remove duplicates using ISRC codes
 4. Filter out noise (live versions, remasters, etc.)
 5. Display results in the console
 6. Log detailed information to `app.log`
+
+#### `export [output_file]`
+Export database to JSON backup file.
+
+```bash
+# Export to default file (artists_backup.json)
+python spotify_tracker.py export
+
+# Export to custom file
+python spotify_tracker.py export my_backup.json
+```
+
+The exported JSON includes:
+- Artist names
+- Spotify artist IDs
+- Date added timestamps
+
+Perfect for backing up your database or transferring artists between machines.
+
+#### `import-json <file>`
+Import artists from a JSON backup file.
+
+```bash
+python spotify_tracker.py import-json artists_backup.json
+```
+
+This restores artists from a previously exported JSON backup. Artists that already exist in the database will be skipped.
+
+#### `remove <identifier>`
+Remove an artist from the database by name or Spotify ID.
+
+```bash
+# Remove by artist name (case-insensitive)
+python spotify_tracker.py remove "Taylor Swift"
+
+# Remove by Spotify artist ID
+python spotify_tracker.py remove 06HL4z0CvFAxyc27GXpf02
+```
+
+The command will:
+1. Try to match by Spotify ID first
+2. If not found, search by artist name (case-insensitive)
+3. Display confirmation of removal
 
 ### Output Examples
 
@@ -269,7 +319,14 @@ The database file is automatically excluded from git (in `.gitignore`).
 
 Run the test suite:
 ```bash
+# Run tracker tests
 python -m unittest test_spotify_tracker.py -v
+
+# Run database tests
+python -m unittest test_artist_database.py -v
+
+# Run all tests
+python -m unittest discover -v
 ```
 
 All tests use mocked Spotify API - no network calls are made.
@@ -360,6 +417,14 @@ Automatically skips releases containing:
 ### 7. Concurrent Processing
 Uses ThreadPoolExecutor to process multiple artists in parallel for faster execution.
 
+### 8. Error Handling & Retry Logic
+The tracker implements robust error handling:
+- **Exponential Backoff**: Retries failed requests with increasing delays (2s, 4s, 8s)
+- **Rate Limit Handling**: Honors Spotify's `Retry-After` header for 429 responses
+- **Custom Exceptions**: Specific exception types for validation, API errors, and rate limiting
+- **Input Validation**: Validates Spotify IDs (exactly 22 alphanumeric characters) and artist names
+- **Graceful Degradation**: Continues processing other artists if one fails
+
 ## Logging
 
 Detailed logs are written to `app.log`:
@@ -427,3 +492,4 @@ Contributions welcome! Please ensure:
 Built with:
 - [Spotipy](https://spotipy.readthedocs.io/) - Spotify Web API Python library
 - [python-dotenv](https://github.com/theskumar/python-dotenv) - Environment variable management
+- [tqdm](https://github.com/tqdm/tqdm) - Progress bar library for better UX

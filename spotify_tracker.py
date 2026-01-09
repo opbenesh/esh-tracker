@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 import spotipy
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials
+from tqdm import tqdm
 from artist_database import ArtistDatabase
 from exceptions import (
     ArtistNotFoundError,
@@ -555,26 +556,30 @@ class SpotifyReleaseTracker:
         missing_artists = []
         processed_count = 0
 
-        # Process artists concurrently
+        # Process artists concurrently with progress bar
         with ThreadPoolExecutor(max_workers=8) as executor:
             future_to_id = {
                 executor.submit(self._process_artist_by_id, artist_id): artist_id
                 for artist_id in artist_ids
             }
 
-            for future in as_completed(future_to_id):
-                artist_id = future_to_id[future]
-                try:
-                    artist_name, releases = future.result()
+            # Add progress bar
+            with tqdm(total=len(future_to_id), desc="Tracking artists", unit="artist") as pbar:
+                for future in as_completed(future_to_id):
+                    artist_id = future_to_id[future]
+                    try:
+                        artist_name, releases = future.result()
 
-                    if artist_name and not releases:
-                        missing_artists.append(artist_id)
-                    elif releases:
-                        all_releases.extend(releases)
-                        processed_count += 1
+                        if artist_name and not releases:
+                            missing_artists.append(artist_id)
+                        elif releases:
+                            all_releases.extend(releases)
+                            processed_count += 1
 
-                except Exception as e:
-                    logger.error(f"Error processing artist ID '{artist_id}': {e}")
+                    except Exception as e:
+                        logger.error(f"Error processing artist ID '{artist_id}': {e}")
+
+                    pbar.update(1)
 
         # Sort releases by date (newest first)
         all_releases.sort(key=lambda x: x['release_date'], reverse=True)
@@ -798,6 +803,98 @@ def cmd_track(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
         print()
 
 
+def cmd_export(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
+    """Handle export command."""
+    try:
+        count = db.export_to_json(args.output)
+
+        print("\n" + "="*80)
+        print("DATABASE EXPORT")
+        print("="*80)
+        print(f"Successfully exported {count} artists to '{args.output}'")
+        print("="*80 + "\n")
+
+    except Exception as e:
+        logger.error(f"Export failed: {e}", exc_info=True)
+        print(f"\n❌ Export Error: {e}")
+        print("Check app.log for details.\n")
+        sys.exit(1)
+
+
+def cmd_import_json(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
+    """Handle import-json command."""
+    try:
+        added, skipped = db.import_from_json(args.file)
+
+        print("\n" + "="*80)
+        print("IMPORT FROM JSON BACKUP")
+        print("="*80)
+        print(f"Added: {added} artists")
+        print(f"Skipped (already exists): {skipped} artists")
+        print(f"\nTotal artists in database: {db.get_artist_count()}")
+        print("="*80 + "\n")
+
+    except FileNotFoundError:
+        logger.error(f"File not found: {args.file}")
+        print(f"\n❌ Error: File '{args.file}' not found.")
+        print("Please check the file path and try again.\n")
+        sys.exit(1)
+    except ValidationError as e:
+        logger.error(f"Validation error: {e}")
+        print(f"\n❌ Validation Error: {e}\n")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Import failed: {e}", exc_info=True)
+        print(f"\n❌ Import Error: {e}")
+        print("Check app.log for details.\n")
+        sys.exit(1)
+
+
+def cmd_remove(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
+    """Handle remove command."""
+    try:
+        # Try to remove by Spotify ID first
+        if db.remove_artist(args.identifier):
+            print("\n" + "="*80)
+            print("ARTIST REMOVED")
+            print("="*80)
+            print(f"Successfully removed artist with ID: {args.identifier}")
+            print(f"\nTotal artists in database: {db.get_artist_count()}")
+            print("="*80 + "\n")
+        else:
+            # Not found by ID, search by name
+            artists = db.get_all_artists()
+            found = None
+            for db_id, date_added, artist_name, spotify_id in artists:
+                if artist_name.lower() == args.identifier.lower():
+                    found = (artist_name, spotify_id)
+                    break
+
+            if found:
+                artist_name, spotify_id = found
+                db.remove_artist(spotify_id)
+                print("\n" + "="*80)
+                print("ARTIST REMOVED")
+                print("="*80)
+                print(f"Successfully removed: {artist_name}")
+                print(f"Spotify ID: {spotify_id}")
+                print(f"\nTotal artists in database: {db.get_artist_count()}")
+                print("="*80 + "\n")
+            else:
+                print("\n" + "="*80)
+                print("ARTIST NOT FOUND")
+                print("="*80)
+                print(f"No artist found with ID or name: {args.identifier}")
+                print("\nUse 'list' command to see all tracked artists.")
+                print("="*80 + "\n")
+
+    except Exception as e:
+        logger.error(f"Remove failed: {e}", exc_info=True)
+        print(f"\n❌ Remove Error: {e}")
+        print("Check app.log for details.\n")
+        sys.exit(1)
+
+
 def main():
     """Main entry point with CLI commands."""
     # Load environment variables
@@ -815,12 +912,23 @@ Examples:
   # Import artists from a Spotify playlist
   python spotify_tracker.py import-playlist 37i9dQZF1DXcBWIGoYBM5M
 
+  # Import artists from JSON backup
+  python spotify_tracker.py import-json artists_backup.json
+
   # List all tracked artists
   python spotify_tracker.py list
 
   # Track recent releases (default command)
   python spotify_tracker.py track
   python spotify_tracker.py
+
+  # Export database to JSON backup
+  python spotify_tracker.py export
+  python spotify_tracker.py export my_backup.json
+
+  # Remove an artist by name or Spotify ID
+  python spotify_tracker.py remove "Taylor Swift"
+  python spotify_tracker.py remove 06HL4z0CvFAxyc27GXpf02
         """
     )
 
@@ -858,6 +966,38 @@ Examples:
         help='Track recent releases from database (default)'
     )
 
+    # export command
+    parser_export = subparsers.add_parser(
+        'export',
+        help='Export database to JSON backup'
+    )
+    parser_export.add_argument(
+        'output',
+        nargs='?',
+        default='artists_backup.json',
+        help='Output JSON file path (default: artists_backup.json)'
+    )
+
+    # import-json command
+    parser_import_json = subparsers.add_parser(
+        'import-json',
+        help='Import artists from JSON backup'
+    )
+    parser_import_json.add_argument(
+        'file',
+        help='Path to JSON backup file'
+    )
+
+    # remove command
+    parser_remove = subparsers.add_parser(
+        'remove',
+        help='Remove an artist from database'
+    )
+    parser_remove.add_argument(
+        'identifier',
+        help='Artist name or Spotify ID to remove'
+    )
+
     args = parser.parse_args()
 
     # Default to 'track' command if none specified
@@ -884,10 +1024,16 @@ Examples:
         cmd_import_txt(args, tracker, db)
     elif args.command == 'import-playlist':
         cmd_import_playlist(args, tracker, db)
+    elif args.command == 'import-json':
+        cmd_import_json(args, tracker, db)
     elif args.command == 'list':
         cmd_list(args, tracker, db)
     elif args.command == 'track':
         cmd_track(args, tracker, db)
+    elif args.command == 'export':
+        cmd_export(args, tracker, db)
+    elif args.command == 'remove':
+        cmd_remove(args, tracker, db)
     else:
         parser.print_help()
 

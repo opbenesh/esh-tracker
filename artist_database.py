@@ -5,6 +5,7 @@ Artist Database Module
 Manages SQLite database for storing tracked artists.
 """
 
+import json
 import re
 import sqlite3
 from datetime import datetime
@@ -264,3 +265,84 @@ class ArtistDatabase:
 
             logger.info(f"Cleared {count} artists from database")
             return count
+
+    def export_to_json(self, filepath: str) -> int:
+        """
+        Export database to JSON for backup.
+
+        Args:
+            filepath: Path to output JSON file
+
+        Returns:
+            Number of artists exported
+
+        Raises:
+            DatabaseError: If export fails
+        """
+        try:
+            artists = self.get_all_artists()
+            data = [
+                {
+                    'date_added': artist[1],
+                    'artist_name': artist[2],
+                    'spotify_artist_id': artist[3]
+                }
+                for artist in artists
+            ]
+
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"Exported {len(data)} artists to {filepath}")
+            return len(data)
+
+        except Exception as e:
+            raise DatabaseError(f"Failed to export to JSON: {e}") from e
+
+    def import_from_json(self, filepath: str) -> Tuple[int, int]:
+        """
+        Import artists from JSON backup.
+
+        Args:
+            filepath: Path to input JSON file
+
+        Returns:
+            Tuple of (added_count, skipped_count)
+
+        Raises:
+            DatabaseError: If import fails
+            ValidationError: If JSON data is invalid
+        """
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            if not isinstance(data, list):
+                raise ValidationError('json_data', type(data).__name__,
+                                    'JSON must contain an array of artists')
+
+            artists = []
+            for item in data:
+                if not isinstance(item, dict):
+                    logger.warning(f"Skipping invalid item: {item}")
+                    continue
+
+                artist_name = item.get('artist_name')
+                spotify_id = item.get('spotify_artist_id')
+
+                if not artist_name or not spotify_id:
+                    logger.warning(f"Skipping incomplete item: {item}")
+                    continue
+
+                artists.append((artist_name, spotify_id))
+
+            added, skipped = self.add_artists_batch(artists)
+            logger.info(f"Imported from {filepath}: {added} added, {skipped} skipped")
+            return added, skipped
+
+        except FileNotFoundError:
+            raise DatabaseError(f"File not found: {filepath}")
+        except json.JSONDecodeError as e:
+            raise DatabaseError(f"Invalid JSON file: {e}") from e
+        except Exception as e:
+            raise DatabaseError(f"Failed to import from JSON: {e}") from e
