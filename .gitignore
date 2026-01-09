@@ -30,7 +30,7 @@ ENV/
 .env
 
 # Agent notes
-agent-env.md
+agent.md
 
 # IDE
 .vscode/
