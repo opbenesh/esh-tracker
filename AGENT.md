@@ -31,6 +31,10 @@
 - **Clean Code**: Write readable, self-documenting code with meaningful names, small functions, and clear structure.
 - **Error Handling**: Implement robust error handling and logging to aid debugging and maintain reliability.
 - **Performance**: Optimize for performance where necessary, but prioritize readability and maintainability.
+- **Unix Philosophy**: Adhere to Unix design principles for CLI tools.
+    - **Input**: Support standard input (stdin) for data ingestion where applicable (use `-` or detection).
+    - **Output**: Separate data (stdout) from informational messages/logs (stderr). Success should often be silent or minimal.
+    - **Composition**: Tools should be pipe-friendly.
 
 ## Tools & Dependencies
 - **Python version**: Python 3.x

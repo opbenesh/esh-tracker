@@ -446,12 +446,16 @@ class SpotifyReleaseTracker:
         logger.info(f"Importing artists from {txt_file}...")
 
         # Read artists from file
-        try:
-            with open(txt_file, 'r', encoding='utf-8') as f:
-                artist_inputs = [line.strip() for line in f if line.strip()]
-        except FileNotFoundError:
-            logger.error(f"File '{txt_file}' not found")
-            return 0, 0, []
+        if txt_file == '-':
+            logger.info("Importing artists from stdin...")
+            artist_inputs = [line.strip() for line in sys.stdin if line.strip()]
+        else:
+            try:
+                with open(txt_file, 'r', encoding='utf-8') as f:
+                    artist_inputs = [line.strip() for line in f if line.strip()]
+            except FileNotFoundError:
+                logger.error(f"File '{txt_file}' not found")
+                return 0, 0, []
 
         added = 0
         skipped = 0
@@ -778,20 +782,15 @@ def cmd_import_txt(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
     try:
         added, skipped, failed = tracker.import_from_txt(args.file, db)
 
-        print("\n" + "="*80)
-        print("IMPORT FROM TEXT FILE")
-        print("="*80)
-        print(f"Added: {added} artists")
-        print(f"Skipped (already exists): {skipped} artists")
-
+        # Output result summary to stderr to keep stdout clean for piping
+        sys.stderr.write(f"Added: {added}, Skipped: {skipped}\n")
+        
         if failed:
-            print(f"\n⚠️  Failed to import {len(failed)} artists:")
+            sys.stderr.write(f"Failed to import {len(failed)} artists:\n")
             for artist in failed:
-                print(f"  - {artist}")
-            print("\nPlease check for typos or use Spotify artist URIs.")
-
-        print(f"\nTotal artists in database: {db.get_artist_count()}")
-        print("="*80 + "\n")
+                sys.stderr.write(f"  - {artist}\n")
+        
+        sys.stderr.write(f"Total artists: {db.get_artist_count()}\n")
 
     except FileNotFoundError:
         logger.error(f"File not found: {args.file}")
