@@ -1,416 +1,217 @@
-# Spotify Release Tracker
+# 🎵 Spotify Release Tracker
 
-A command-line tool for tracking new music releases from your favorite Spotify artists. Never miss a release again.
+Never miss a new release from your favorite artists. Track hundreds of bands, get notified of new music, and cut through the noise of re-releases and live albums.
 
-## Overview
+## What It Does
 
-Spotify Release Tracker monitors your chosen artists and reports their recent releases. It filters noise (live recordings, karaoke, commentary), deduplicates tracks across singles and albums using ISRC codes, and outputs in machine-readable formats for easy automation.
+This CLI tool watches your favorite Spotify artists and shows you their recent releases. It's designed for music fans who follow many artists and want to catch new releases without constantly checking Spotify.
 
-**Built for Unix philosophy**: pipe-friendly, machine-readable by default, with human-readable options when needed.
+**Perfect for**: Metal fans tracking dozens of bands, playlist curators, music journalists, or anyone who's ever missed an album drop.
 
-## Key Features
+## ⚡ Quick Example
 
-- **Recent Release Tracking**: Configurable lookback window (default 90 days)
-- **Smart Deduplication**: Uses ISRC codes to identify the same track across different releases
-- **Noise Filtering**: Automatically excludes live recordings, karaoke, commentary, and other non-studio content
-- **Multiple Output Formats**: TSV (default), JSON, CSV, and human-readable table formats
-- **Flexible Date Ranges**: Query by days back or specific date ranges
-- **Playlist Import**: Bulk import artists from any Spotify playlist
-- **SQLite Storage**: Local database for fast queries and offline artist management
-- **Resilient**: Handles API rate limits and transient errors gracefully
-
-## Prerequisites
-
-- Python 3.7 or higher
-- Spotify Developer Account (free)
-- Spotify API credentials (Client ID and Secret)
-
-## Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd artist-tracker
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Set up Spotify API credentials**
-
-   a. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-
-   b. Create a new app (or use an existing one)
-
-   c. Copy your Client ID and Client Secret
-
-   d. Create a `.env` file in the project root:
-   ```bash
-   cp .env.example .env
-   ```
-
-   e. Edit `.env` and add your credentials:
-   ```
-   SPOTIPY_CLIENT_ID=your_client_id_here
-   SPOTIPY_CLIENT_SECRET=your_client_secret_here
-   ```
-
-## Quick Start
+Here's what a typical session looks like:
 
 ```bash
-# Import artists from a Spotify playlist
-python main.py import-playlist <playlist_id>
+# Add your favorite artists from a playlist
+$ python main.py import-playlist 37i9dQZF1DWWOaP4H0w5b0
+Imported 47 artists from "Heavy Metal Classics"
 
-# Or import from a text file (one artist name per line)
-echo -e "Radiohead\nAphex Twin\nBoards of Canada" | python main.py import-txt -
-
-# Track new releases (outputs TSV by default)
-python main.py track
-
-# View as human-readable table
-python main.py track --format table
-```
-
-## Usage
-
-### Basic Workflow
-
-1. **Add artists** to your tracking database
-2. **Run the tracker** to fetch recent releases
-3. **Process the output** with standard Unix tools or consume programmatically
-
-### Core Commands
-
-#### `track` - Fetch New Releases
-
-The primary command. Fetches and displays recent releases from all tracked artists.
-
-```bash
-# Default: TSV output of last 90 days
-python main.py track
-
-# Human-readable table format
-python main.py track --format table
-
-# JSON output for programmatic use
-python main.py track --format json
-
-# Custom date range
-python main.py track --days 30
-python main.py track --since 2026-01-01
-
-# Limit tracks per artist (sorted by popularity)
-python main.py track --max-per-artist 5
-```
-
-**Available Options:**
-
-| Option | Short | Description | Default |
-|--------|-------|-------------|---------|
-| `--format` | `-f` | Output format: `tsv`, `json`, `csv`, or `table` | `tsv` |
-| `--pretty` | `-p` | Shorthand for `--format table` (legacy) | - |
-| `--days` | `-d` | Number of days to look back | `90` |
-| `--since` | - | Start date in YYYY-MM-DD format (overrides `--days`) | - |
-| `--max-per-artist` | `-m` | Maximum tracks per artist (by popularity) | unlimited |
-
-#### `import-playlist` - Import Artists from Playlist
-
-Import all artists from a Spotify playlist in one command.
-
-```bash
-# Import from a public or your own playlist
-python main.py import-playlist <playlist_id>
-
-# Example with full URL (ID extracted automatically)
-python main.py import-playlist https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
-```
-
-The playlist ID is the string after `/playlist/` in the Spotify URL.
-
-#### `import-txt` - Import Artists from Text File
-
-Import artists from a text file or stdin. One artist name per line.
-
-```bash
-# From file
-python main.py import-txt artists.txt
-
-# From stdin (pipe or heredoc)
-echo "Radiohead" | python main.py import-txt -
-printf "Aphex Twin\nAutechre" | python main.py import-txt -
-
-# From heredoc
-python main.py import-txt - <<EOF
-Nine Inch Nails
-Massive Attack
-Portishead
-EOF
-```
-
-#### `list` - Show Tracked Artists
-
-Display all artists currently in your tracking database.
-
-```bash
-python main.py list
-```
-
-#### `remove` - Remove an Artist
-
-Remove an artist from tracking by name or Spotify ID.
-
-```bash
-# By name
-python main.py remove "Radiohead"
-
-# By Spotify ID
-python main.py remove 4Z8W4fKeB5YxbusRsdQVPb
-```
-
-#### `stats` - Database Statistics
-
-View statistics about your tracking database.
-
-```bash
-python main.py stats
-```
-
-Shows total artists tracked, current lookback window, database size, and more.
-
-#### `export` - Backup Database
-
-Export your artist database to JSON format.
-
-```bash
-# Export to file
-python main.py export backup.json
-
-# Export to stdout
-python main.py export
-```
-
-#### `import-json` - Restore from Backup
-
-Restore artists from a JSON backup.
-
-```bash
-python main.py import-json backup.json
-```
-
-#### `preview` - One-Time Playlist Preview
-
-Preview releases from a playlist without adding artists to your database.
-
-```bash
-# Preview releases from a playlist
-python main.py preview <playlist_url_or_id>
-
-# With track limit per artist
-python main.py preview <playlist_url_or_id> --max-per-artist 3
-```
-
-## Output Formats
-
-### TSV (Tab-Separated Values) - Default
-
-Machine-readable format, ideal for piping to other tools or importing into spreadsheets.
-
-```bash
-$ python main.py track
-2026-01-15	Radiohead	Burn the Witch	A Moon Shaped Pool	single	GBUM71600501	https://open.spotify.com/track/...
-2026-01-10	Aphex Twin	Blackbox Life Recorder	...	album	GBAHT2100301	https://open.spotify.com/track/...
-```
-
-**Columns**: Date, Artist, Track, Album, Album Type, ISRC, URL, [Popularity]
-
-### JSON
-
-Structured data for programmatic consumption.
-
-```bash
-$ python main.py track --format json
-{
-  "releases": [
-    {
-      "artist": "Radiohead",
-      "track": "Burn the Witch",
-      "album": "A Moon Shaped Pool",
-      "album_type": "single",
-      "release_date": "2026-01-15",
-      "isrc": "GBUM71600501",
-      "url": "https://open.spotify.com/track/...",
-      "popularity": 75
-    }
-  ],
-  "meta": {
-    "total": 2,
-    "cutoff_date": "2025-10-17",
-    "artists_tracked": 15
-  }
-}
-```
-
-### CSV
-
-Comma-separated values with headers.
-
-```bash
-$ python main.py track --format csv
-date,artist,track,album,album_type,isrc,url,popularity
-2026-01-15,Radiohead,Burn the Witch,A Moon Shaped Pool,single,GBUM71600501,https://...,75
-```
-
-### Table (Human-Readable)
-
-Formatted output for terminal viewing.
-
-```bash
+# Check what's new (default: last 90 days)
 $ python main.py track --format table
 
 ================================================================================
 SPOTIFY RECENT RELEASE TRACKER
 ================================================================================
-Tracking 15 artists | Releases since 2025-10-17 (90 days)
+Tracking 47 artists | Releases since 2025-10-11 (90 days)
 
-🎵 Radiohead - Burn the Witch
-   Album: A Moon Shaped Pool (single)
-   Released: 2026-01-15
-   ISRC: GBUM71600501
-   URL: https://open.spotify.com/track/...
-   Popularity: 75
+🎵 Converge - Permanent Blue
+   Album: The Dusk In Us (album)
+   Released: 2025-12-18
+   URL: https://open.spotify.com/track/5Z8K...
 
-🎵 Aphex Twin - Blackbox Life Recorder
-   Album: ... (album)
-   Released: 2026-01-10
-   ISRC: GBAHT2100301
-   URL: https://open.spotify.com/track/...
-   Popularity: 68
+🎵 Meshuggah - Nostrum
+   Album: Immutable (album)
+   Released: 2026-01-03
+   URL: https://open.spotify.com/track/3hB9...
+
+🎵 Dillinger Escape Plan - Farewell, Mona Lisa
+   Album: Option Paralysis (album)
+   Released: 2025-11-22
+   URL: https://open.spotify.com/track/7xYg...
 
 ================================================================================
-Total releases: 2
+Total releases: 3
 ================================================================================
 ```
 
-## Examples
+That's it! You just discovered 3 new albums you might have missed.
 
-### Daily Automation
+## 🚀 Installation
 
-Get today's releases and email yourself:
+**Prerequisites**: Python 3.7+, Spotify account (free)
 
+1. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Get Spotify API credentials** (takes 2 minutes)
+
+   - Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+   - Create a new app
+   - Copy your Client ID and Client Secret
+
+3. **Configure credentials**
+   ```bash
+   cp .env.example .env
+   # Edit .env and paste your credentials
+   ```
+
+## 📖 How to Use
+
+### Adding Artists
+
+**From a Spotify playlist** (easiest way):
 ```bash
-#!/bin/bash
-python main.py track --days 1 --format table | mail -s "New Music Today" you@example.com
+python main.py import-playlist <playlist_id>
 ```
 
-### Filter Specific Artists
-
-Use grep to filter TSV output:
-
+**From a text file**:
 ```bash
-python main.py track | grep -i "radiohead"
+# One artist per line
+echo -e "Converge\nTurnstile\nCode Orange" > artists.txt
+python main.py import-txt artists.txt
+
+# Or pipe directly
+echo "Meshuggah" | python main.py import-txt -
 ```
 
-### Top Tracks Only
+### Tracking Releases
 
-Get the most popular release per artist:
-
+**Basic tracking** (shows last 90 days):
 ```bash
-python main.py track --max-per-artist 1 --format csv > top_tracks.csv
+python main.py track
 ```
 
-### Import from Multiple Playlists
-
+**Human-readable format**:
 ```bash
-for playlist_id in 37i9dQZF1DXcBWIGoYBM5M 37i9dQZF1DX0XUsuxWHRQd; do
-  python main.py import-playlist $playlist_id
-done
+python main.py track --format table
 ```
 
-### Weekly Digest
-
+**Custom time range**:
 ```bash
-# Run weekly via cron
-0 9 * * MON python main.py track --days 7 --format table > /tmp/weekly_releases.txt
+# Last 30 days
+python main.py track --days 30
+
+# Since a specific date
+python main.py track --since 2026-01-01
 ```
 
-## Troubleshooting
+**Limit per artist** (useful for prolific bands):
+```bash
+# Get only the top 3 most popular tracks per artist
+python main.py track --max-per-artist 3 --format table
+```
 
-### "No credentials found"
+### Managing Your List
 
-Ensure your `.env` file exists in the project root and contains valid `SPOTIPY_CLIENT_ID` and `SPOTIPY_CLIENT_SECRET`.
+**See all tracked artists**:
+```bash
+python main.py list
+```
 
-### "Invalid client"
+**Remove an artist**:
+```bash
+python main.py remove "Converge"
+```
 
-Your Spotify API credentials are incorrect. Verify them in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
+**Get stats**:
+```bash
+python main.py stats
+```
 
-### Rate limiting / 429 errors
+## 🎯 Output Formats
 
-The tool automatically handles rate limits with exponential backoff. For large artist lists, the initial run may take some time.
-
-### "Artist not found"
-
-Spotify's search is case-insensitive but sensitive to spelling. Try variations of the artist name, or use `import-playlist` to ensure exact matches.
-
-### Empty results
-
-- Check that artists are actually in your database: `python main.py list`
-- Verify the date range: `python main.py track --days 365` for a broader search
-- Some artists may not have released music recently
-
-### Database locked
-
-If you get "database is locked" errors, ensure no other instance of the tool is running. SQLite doesn't support concurrent writes.
-
-## Development
-
-For development guidelines, architecture documentation, and contribution information, see [AGENT.md](AGENT.md).
-
-### Running Tests
+By default, the tool outputs **TSV** (tab-separated values) - perfect for piping to other tools or importing into spreadsheets:
 
 ```bash
-# Install dev dependencies
-pip install -r requirements-dev.txt
+$ python main.py track
+2026-01-15	Converge	Permanent Blue	The Dusk In Us	album	USDY41700501	https://...
+2026-01-10	Meshuggah	Nostrum	Immutable	album	SEAN52201145	https://...
+```
 
-# Run all tests
+**Other formats**:
+
+| Format | Flag | Use Case |
+|--------|------|----------|
+| **Table** | `--format table` or `-p` | Human-readable terminal output |
+| **JSON** | `--format json` | Programmatic consumption |
+| **CSV** | `--format csv` | Spreadsheet import |
+
+## 💡 Pro Tips
+
+### Daily Digest
+
+Set up a cron job to email yourself daily:
+```bash
+0 9 * * * python main.py track --days 1 --format table | mail -s "New Metal Releases" you@email.com
+```
+
+### Filter by Artist
+
+Use standard Unix tools to filter:
+```bash
+python main.py track | grep -i "converge"
+```
+
+### One-Time Preview
+
+Want to check a playlist without adding all artists to your database?
+```bash
+python main.py preview <playlist_url>
+```
+
+## ❓ Troubleshooting
+
+**"No credentials found"**: Make sure `.env` exists and has your Spotify credentials
+
+**"Artist not found"**: Spotify search is spelling-sensitive. Try using `import-playlist` to get exact matches
+
+**Empty results**: Your artists might not have released anything recently. Try `--days 365` for a broader search
+
+**Rate limits**: The tool handles this automatically with backoff. Just be patient on first run with many artists.
+
+## 🎸 Why This Tool Exists
+
+If you follow metal, hardcore, or any genre with lots of artists, you know the pain:
+- Checking Spotify manually every day is tedious
+- Spotify's Release Radar misses stuff
+- You follow 100+ bands and can't keep track
+- Re-releases, live albums, and karaoke versions clutter everything
+
+This tool solves that. It tracks everyone you care about, filters the noise, and gives you a clean list of actual new releases.
+
+## 🔧 Development
+
+See [AGENT.md](AGENT.md) for development guidelines and architecture details.
+
+**Run tests**:
+```bash
 PYTHONPATH=src python3 -m unittest discover tests -v
-
-# Run live integration tests (requires valid .env credentials)
-PYTHONPATH=src python3 -m unittest tests/test_live.py -v
 ```
 
-### Type Checking
-
-```bash
-mypy src/
-```
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 artist-tracker/
 ├── main.py                  # CLI entry point
-├── src/
-│   └── artist_tracker/
-│       ├── tracker.py       # Core tracking logic
-│       ├── database.py      # SQLite persistence
-│       └── ...
-├── tests/                   # Unit and integration tests
-├── requirements.txt         # Runtime dependencies
-├── requirements-dev.txt     # Development dependencies
-├── .env.example            # Template for credentials
-└── README.md               # This file
+├── src/artist_tracker/      # Core application code
+├── tests/                   # Test suite
+├── requirements.txt         # Dependencies
+└── .env.example            # Credentials template
 ```
-
-## License
-
-[Specify your license here, e.g., MIT, Apache 2.0, etc.]
-
-## Contributing
-
-Contributions are welcome! Please see [AGENT.md](AGENT.md) for coding guidelines and development setup.
 
 ---
 
-**Note**: This tool uses the Spotify Web API. Respect Spotify's [Terms of Service](https://www.spotify.com/legal/end-user-agreement/) and rate limits.
+**Note**: This tool uses the Spotify Web API. Respect their [Terms of Service](https://www.spotify.com/legal/end-user-agreement/).
