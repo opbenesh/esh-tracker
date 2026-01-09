@@ -5,16 +5,22 @@ Artist Database Module
 Manages SQLite database for storing tracked artists.
 """
 
+import re
 import sqlite3
 from datetime import datetime
 from typing import List, Optional, Tuple
 import logging
+
+from exceptions import DatabaseError, ValidationError
 
 logger = logging.getLogger(__name__)
 
 
 class ArtistDatabase:
     """Manages artist storage in SQLite database."""
+
+    # Spotify artist ID is base62 encoded, 22 characters
+    SPOTIFY_ID_PATTERN = re.compile(r'^[a-zA-Z0-9]{22}$')
 
     def __init__(self, db_path: str = 'artists.db'):
         """
@@ -25,6 +31,48 @@ class ArtistDatabase:
         """
         self.db_path = db_path
         self._init_database()
+
+    @staticmethod
+    def _validate_artist_name(artist_name: str) -> None:
+        """
+        Validate artist name.
+
+        Args:
+            artist_name: Name to validate
+
+        Raises:
+            ValidationError: If validation fails
+        """
+        if not artist_name:
+            raise ValidationError('artist_name', artist_name, 'Artist name cannot be empty')
+
+        if not artist_name.strip():
+            raise ValidationError('artist_name', artist_name, 'Artist name cannot be only whitespace')
+
+        if len(artist_name) > 500:
+            raise ValidationError('artist_name', artist_name[:50] + '...',
+                                'Artist name is too long (max 500 characters)')
+
+    @staticmethod
+    def _validate_spotify_id(spotify_artist_id: str) -> None:
+        """
+        Validate Spotify artist ID.
+
+        Args:
+            spotify_artist_id: Spotify ID to validate
+
+        Raises:
+            ValidationError: If validation fails
+        """
+        if not spotify_artist_id:
+            raise ValidationError('spotify_artist_id', spotify_artist_id, 'Spotify ID cannot be empty')
+
+        if not spotify_artist_id.strip():
+            raise ValidationError('spotify_artist_id', spotify_artist_id, 'Spotify ID cannot be only whitespace')
+
+        if not ArtistDatabase.SPOTIFY_ID_PATTERN.match(spotify_artist_id):
+            raise ValidationError('spotify_artist_id', spotify_artist_id,
+                                'Spotify ID must be exactly 22 alphanumeric characters')
 
     def _init_database(self) -> None:
         """Create the database schema if it doesn't exist."""
@@ -62,7 +110,15 @@ class ArtistDatabase:
 
         Returns:
             True if artist was added, False if already exists
+
+        Raises:
+            ValidationError: If inputs are invalid
+            DatabaseError: If database operation fails
         """
+        # Validate inputs
+        self._validate_artist_name(artist_name)
+        self._validate_spotify_id(spotify_artist_id)
+
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
@@ -80,6 +136,8 @@ class ArtistDatabase:
         except sqlite3.IntegrityError:
             logger.debug(f"Artist '{artist_name}' already exists in database")
             return False
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Failed to add artist: {e}") from e
 
     def add_artists_batch(
         self,

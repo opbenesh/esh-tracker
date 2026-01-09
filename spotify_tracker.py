@@ -12,13 +12,22 @@ import logging
 import os
 import re
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 from dotenv import load_dotenv
 import spotipy
+from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials
 from artist_database import ArtistDatabase
+from exceptions import (
+    ArtistNotFoundError,
+    PlaylistNotFoundError,
+    RateLimitError,
+    SpotifyAPIError,
+    ValidationError
+)
 
 
 # Configure logging
@@ -48,6 +57,10 @@ class SpotifyReleaseTracker:
     # Lookback window in days
     LOOKBACK_DAYS = 90
 
+    # API retry configuration
+    MAX_RETRIES = 3
+    RETRY_BASE_DELAY = 2.0  # seconds
+
     def __init__(self, client_id: str, client_secret: str):
         """
         Initialize the tracker with Spotify credentials.
@@ -63,6 +76,88 @@ class SpotifyReleaseTracker:
         self.sp = spotipy.Spotify(auth_manager=auth_manager)
         self.cutoff_date = datetime.now() - timedelta(days=self.LOOKBACK_DAYS)
         logger.info(f"Initialized tracker with cutoff date: {self.cutoff_date.date()}")
+
+    def _retry_on_error(self, func, *args, max_retries: int = None, **kwargs):
+        """
+        Retry a function call with exponential backoff on error.
+
+        Args:
+            func: Function to call
+            *args: Positional arguments for the function
+            max_retries: Maximum number of retries (default: self.MAX_RETRIES)
+            **kwargs: Keyword arguments for the function
+
+        Returns:
+            Function result
+
+        Raises:
+            SpotifyAPIError: If all retries fail
+            RateLimitError: If rate limit is exceeded
+        """
+        if max_retries is None:
+            max_retries = self.MAX_RETRIES
+
+        last_exception = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                return func(*args, **kwargs)
+
+            except SpotifyException as e:
+                last_exception = e
+
+                # Handle rate limiting
+                if e.http_status == 429:
+                    retry_after = int(e.headers.get('Retry-After', self.RETRY_BASE_DELAY))
+                    logger.warning(
+                        f"Rate limit exceeded. Waiting {retry_after}s before retry "
+                        f"(attempt {attempt + 1}/{max_retries + 1})"
+                    )
+                    if attempt < max_retries:
+                        time.sleep(retry_after)
+                        continue
+                    else:
+                        raise RateLimitError(retry_after=retry_after) from e
+
+                # Handle server errors (5xx)
+                elif e.http_status and 500 <= e.http_status < 600:
+                    if attempt < max_retries:
+                        wait_time = self.RETRY_BASE_DELAY * (2 ** attempt)
+                        logger.warning(
+                            f"Server error ({e.http_status}). Retrying in {wait_time}s "
+                            f"(attempt {attempt + 1}/{max_retries + 1})"
+                        )
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        raise SpotifyAPIError(f"Server error after {max_retries} retries: {e}",
+                                            status_code=e.http_status) from e
+
+                # Handle other HTTP errors
+                elif e.http_status and 400 <= e.http_status < 500:
+                    # Client errors shouldn't be retried
+                    raise SpotifyAPIError(f"API error: {e}", status_code=e.http_status) from e
+
+                # Handle network errors
+                else:
+                    if attempt < max_retries:
+                        wait_time = self.RETRY_BASE_DELAY * (2 ** attempt)
+                        logger.warning(
+                            f"Network error: {e}. Retrying in {wait_time}s "
+                            f"(attempt {attempt + 1}/{max_retries + 1})"
+                        )
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        raise SpotifyAPIError(f"Network error after {max_retries} retries: {e}") from e
+
+            except Exception as e:
+                # Unexpected errors shouldn't be retried
+                logger.error(f"Unexpected error: {e}")
+                raise
+
+        # This should never be reached, but just in case
+        raise SpotifyAPIError(f"Failed after {max_retries} retries") from last_exception
 
     def _parse_artist_input(self, line: str) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -133,21 +228,27 @@ class SpotifyReleaseTracker:
 
     def _search_artist(self, artist_name: str) -> Optional[str]:
         """
-        Search for an artist by name and return their ID.
+        Search for an artist by name and return their ID with retry logic.
 
         Args:
             artist_name: Name of the artist to search
 
         Returns:
             Artist ID or None if not found
+
+        Raises:
+            SpotifyAPIError: If API call fails after retries
         """
-        try:
-            results = self.sp.search(
+        def search_call():
+            return self.sp.search(
                 q=f'artist:{artist_name}',
                 type='artist',
                 limit=1,
                 market=self.MARKET
             )
+
+        try:
+            results = self._retry_on_error(search_call)
 
             if results['artists']['items']:
                 artist = results['artists']['items'][0]
@@ -158,9 +259,12 @@ class SpotifyReleaseTracker:
                 logger.warning(f"No results found for artist '{artist_name}'")
                 return None
 
+        except (SpotifyAPIError, RateLimitError) as e:
+            logger.error(f"API error searching for artist '{artist_name}': {e}")
+            raise
         except Exception as e:
-            logger.error(f"Error searching for artist '{artist_name}': {e}")
-            return None
+            logger.error(f"Unexpected error searching for artist '{artist_name}': {e}")
+            raise
 
     def _get_artist_name(self, artist_id: str) -> Optional[str]:
         """
@@ -556,36 +660,78 @@ class SpotifyReleaseTracker:
 
 
 def cmd_import_txt(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
-    """Handle import-txt command."""
-    added, skipped, failed = tracker.import_from_txt(args.file, db)
+    """Handle import-txt command with error handling."""
+    try:
+        added, skipped, failed = tracker.import_from_txt(args.file, db)
 
-    print("\n" + "="*80)
-    print("IMPORT FROM TEXT FILE")
-    print("="*80)
-    print(f"Added: {added} artists")
-    print(f"Skipped (already exists): {skipped} artists")
+        print("\n" + "="*80)
+        print("IMPORT FROM TEXT FILE")
+        print("="*80)
+        print(f"Added: {added} artists")
+        print(f"Skipped (already exists): {skipped} artists")
 
-    if failed:
-        print(f"\n⚠️  Failed to import {len(failed)} artists:")
-        for artist in failed:
-            print(f"  - {artist}")
-        print("\nPlease check for typos or use Spotify artist URIs.")
+        if failed:
+            print(f"\n⚠️  Failed to import {len(failed)} artists:")
+            for artist in failed:
+                print(f"  - {artist}")
+            print("\nPlease check for typos or use Spotify artist URIs.")
 
-    print(f"\nTotal artists in database: {db.get_artist_count()}")
-    print("="*80 + "\n")
+        print(f"\nTotal artists in database: {db.get_artist_count()}")
+        print("="*80 + "\n")
+
+    except FileNotFoundError:
+        logger.error(f"File not found: {args.file}")
+        print(f"\n❌ Error: File '{args.file}' not found.")
+        print("Please check the file path and try again.\n")
+        sys.exit(1)
+    except ValidationError as e:
+        logger.error(f"Validation error: {e}")
+        print(f"\n❌ Validation Error: {e}\n")
+        sys.exit(1)
+    except (RateLimitError, SpotifyAPIError) as e:
+        logger.error(f"Spotify API error: {e}")
+        print(f"\n❌ Spotify API Error: {e}")
+        print("Please try again later.\n")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error during import: {e}", exc_info=True)
+        print(f"\n❌ Unexpected Error: {e}")
+        print("Check app.log for details.\n")
+        sys.exit(1)
 
 
 def cmd_import_playlist(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
-    """Handle import-playlist command."""
-    added, skipped = tracker.import_from_playlist(args.playlist, db)
+    """Handle import-playlist command with error handling."""
+    try:
+        added, skipped = tracker.import_from_playlist(args.playlist, db)
 
-    print("\n" + "="*80)
-    print("IMPORT FROM SPOTIFY PLAYLIST")
-    print("="*80)
-    print(f"Added: {added} artists")
-    print(f"Skipped (already exists): {skipped} artists")
-    print(f"\nTotal artists in database: {db.get_artist_count()}")
-    print("="*80 + "\n")
+        print("\n" + "="*80)
+        print("IMPORT FROM SPOTIFY PLAYLIST")
+        print("="*80)
+        print(f"Added: {added} artists")
+        print(f"Skipped (already exists): {skipped} artists")
+        print(f"\nTotal artists in database: {db.get_artist_count()}")
+        print("="*80 + "\n")
+
+    except ValidationError as e:
+        logger.error(f"Validation error: {e}")
+        print(f"\n❌ Validation Error: {e}\n")
+        sys.exit(1)
+    except PlaylistNotFoundError as e:
+        logger.error(f"Playlist not found: {e}")
+        print(f"\n❌ Error: {e}")
+        print("Please check the playlist ID or URI and try again.\n")
+        sys.exit(1)
+    except (RateLimitError, SpotifyAPIError) as e:
+        logger.error(f"Spotify API error: {e}")
+        print(f"\n❌ Spotify API Error: {e}")
+        print("Please try again later.\n")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Unexpected error during playlist import: {e}", exc_info=True)
+        print(f"\n❌ Unexpected Error: {e}")
+        print("Check app.log for details.\n")
+        sys.exit(1)
 
 
 def cmd_list(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
