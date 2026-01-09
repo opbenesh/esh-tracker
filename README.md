@@ -1,10 +1,10 @@
-# Spotify Release Tracker
+# 🎵 Spotify Release Tracker
 
 A specialized CLI tool to track, filter, and organize new releases (last 90 days) from your favorite Spotify artists.
 
 Features ISRC-based deduplication, noise filtering (no karaoke/live/demos), and SQLite storage.
 
-## Quick Start
+## 🚀 Quick Start
 ```bash
 # 1. Install
 pip install -r requirements.txt
@@ -18,7 +18,7 @@ python main.py import-playlist <playlist_id>
 python main.py track
 ```
 
-## Commands
+## 🛠️ Commands
 
 | Command | Usage | Description |
 |---|---|---|
@@ -34,14 +34,14 @@ python main.py track
 ### options
 - `--max-per-artist <N>`: Cap results per artist (ranked by popularity). Specific to `debug-playlist`.
 
-## Features
+## ✨ Features
 - **90-Day Window**: Only fetches recent releases.
 - **Smart Deduplication**: Uses ISRC to merge singles/albums.
 - **Noise Filter**: Skips Live, Commentary, Karaoke, etc.
 - **Popularity Ranking**: Prioritizes popular tracks.
 - **Resilient**: Handles rate limits and API errors gracefully.
 
-## Development
+## 💻 Development
 
 See [AGENT.md](AGENT.md) for detailed architecture, guidelines, and local setup instructions.
 
