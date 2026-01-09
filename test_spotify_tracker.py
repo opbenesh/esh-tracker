@@ -317,20 +317,30 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         self.assertIn('error', results)
 
     @patch('builtins.open', new_callable=mock_open, read_data='Taylor Swift\nspotify:artist:123\n# Comment\n')
+    @patch('spotify_tracker.as_completed')
     @patch('spotify_tracker.ThreadPoolExecutor')
-    def test_track_artists_integration(self, mock_executor, mock_file):
+    def test_track_artists_integration(self, mock_executor, mock_as_completed, mock_file):
         """Integration test for tracking multiple artists."""
-        # Mock concurrent execution to run synchronously for testing
+        # Create proper mock futures
+        futures = []
+        
         def mock_submit(fn, arg):
             mock_future = Mock()
-            mock_future.result.return_value = fn(arg)
+            mock_future._result = fn(arg)
+            mock_future.result.return_value = mock_future._result
+            futures.append((mock_future, arg))
             return mock_future
 
-        mock_executor_instance = Mock(spec=['submit', '__enter__', '__exit__'])
+        mock_executor_instance = Mock()
         mock_executor_instance.__enter__ = Mock(return_value=mock_executor_instance)
         mock_executor_instance.__exit__ = Mock(return_value=None)
         mock_executor_instance.submit.side_effect = mock_submit
         mock_executor.return_value = mock_executor_instance
+
+        # Mock as_completed to just iterate over the futures
+        def mock_as_completed_impl(future_dict):
+            return iter(future_dict.keys())
+        mock_as_completed.side_effect = mock_as_completed_impl
 
         # Mock the process_artist method
         def mock_process_artist(artist_input):

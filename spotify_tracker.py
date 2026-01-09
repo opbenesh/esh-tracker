@@ -307,8 +307,7 @@ class SpotifyReleaseTracker:
             albums = self.sp.artist_albums(
                 artist_id,
                 album_type='album,single,compilation',
-                limit=50,
-                market=self.MARKET
+                limit=50
             )
 
             for album in albums['items']:
