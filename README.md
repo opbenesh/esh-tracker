@@ -41,22 +41,52 @@ python main.py track
 - **Popularity Ranking**: Prioritizes popular tracks.
 - **Resilient**: Handles rate limits and API errors gracefully.
 
+
 ## 💻 Sample Interaction
+
+First, register your favorite artists:
+
+```bash
+$ echo "Converge\nTurnstile" > artists.txt
+$ python main.py import-txt artists.txt
+
+================================================================================
+IMPORT FROM TEXT FILE
+================================================================================
+Added: 2 artists
+Skipped (already exists): 0 artists
+
+Total artists in database: 2
+================================================================================
+```
+
+Then, run the tracker to find their recent releases:
 
 ```
 $ python main.py track
 
-🎵 Taylor Swift - Cruel Summer
-   Album: Lover (album)
-   Released: 2024-05-15
-   ISRC: USUG11900198
-   URL: https://open.spotify.com/track/1BxfuPKGuaTgP7aM0Bbdwr
+================================================================================
+SPOTIFY RECENT RELEASE TRACKER
+================================================================================
+Cutoff Date: 2025-12-01 (90 days ago)
+Total Artists in DB: 2
+Total Releases Found: 2
+Artists with Releases: 2
+================================================================================
 
-🎵 Drake - Rich Flex
-   Album: Her Loss (album)
-   Released: 2024-04-20
-   ISRC: USCM52201234
-   URL: https://open.spotify.com/track/2Xr1dTzJee307cnzYjUcRZ
+🎵 Converge - Atonement (Redux)
+   Album: Atonement (single)
+   Released: 2026-01-15
+   ISRC: USUG11900199
+   URL: https://open.spotify.com/track/4kbjBiBMv5dZ3eH78f9
+   Popularity: 45
+
+🎵 Turnstile - New Heart Design (Remix)
+   Album: New Heart Design (single)
+   Released: 2026-01-08
+   ISRC: USCM52201235
+   URL: https://open.spotify.com/track/67bNcGZpXF6rF5e9G8
+   Popularity: 62
 ```
 
 ## ⚙️ Development
