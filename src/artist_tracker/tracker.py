@@ -59,21 +59,23 @@ class SpotifyReleaseTracker:
     MAX_RETRIES = 3
     RETRY_BASE_DELAY = 2.0  # seconds
 
-    def __init__(self, client_id: str, client_secret: str):
+    def __init__(self, client_id: str, client_secret: str, lookback_days: Optional[int] = None):
         """
         Initialize the tracker with Spotify credentials.
 
         Args:
             client_id: Spotify API client ID
             client_secret: Spotify API client secret
+            lookback_days: Optional custom lookback window in days (default: 90)
         """
         auth_manager = SpotifyClientCredentials(
             client_id=client_id,
             client_secret=client_secret
         )
         self.sp = spotipy.Spotify(auth_manager=auth_manager)
-        self.cutoff_date = datetime.now() - timedelta(days=self.LOOKBACK_DAYS)
-        logger.info(f"Initialized tracker with cutoff date: {self.cutoff_date.date()}")
+        self.lookback_days = lookback_days if lookback_days is not None else self.LOOKBACK_DAYS
+        self.cutoff_date = datetime.now() - timedelta(days=self.lookback_days)
+        logger.info(f"Initialized tracker with cutoff date: {self.cutoff_date.date()} ({self.lookback_days} days)")
 
     def _retry_on_error(self, func, *args, max_retries: int = None, **kwargs):
         """
@@ -542,12 +544,13 @@ class SpotifyReleaseTracker:
             logger.error(f"Error importing from playlist: {e}")
             return 0, 0
 
-    def track_artists_from_db(self, db: ArtistDatabase) -> Dict:
+    def track_artists_from_db(self, db: ArtistDatabase, max_per_artist: Optional[int] = None) -> Dict:
         """
         Track recent releases for all artists in the database.
 
         Args:
             db: ArtistDatabase instance
+            max_per_artist: Optional cap on number of tracks per artist (uses popularity ranking)
 
         Returns:
             Dictionary with results and statistics
@@ -571,7 +574,7 @@ class SpotifyReleaseTracker:
         # Process artists concurrently with progress bar
         with ThreadPoolExecutor(max_workers=8) as executor:
             future_to_id = {
-                executor.submit(self._process_artist_by_id, artist_id): artist_id
+                executor.submit(self._process_artist_by_id, artist_id, max_per_artist): artist_id
                 for artist_id in artist_ids
             }
 
@@ -603,12 +606,13 @@ class SpotifyReleaseTracker:
             'missing_artists': missing_artists
         }
 
-    def _process_artist_by_id(self, artist_id: str) -> Tuple[Optional[str], List[Dict]]:
+    def _process_artist_by_id(self, artist_id: str, max_tracks: Optional[int] = None) -> Tuple[Optional[str], List[Dict]]:
         """
         Process a single artist by Spotify ID.
 
         Args:
             artist_id: Spotify artist ID
+            max_tracks: Optional cap on number of tracks to return (uses popularity ranking)
 
         Returns:
             Tuple of (artist_name, releases_list)
@@ -619,7 +623,7 @@ class SpotifyReleaseTracker:
             return None, []
 
         # Get recent releases
-        releases = self._get_recent_releases(artist_id, artist_name)
+        releases = self._get_recent_releases(artist_id, artist_name, max_tracks)
         return artist_name, releases
 
     def track_artists(self, artists_file: str = 'artists.txt') -> Dict:
@@ -776,6 +780,80 @@ class SpotifyReleaseTracker:
             }
 
 
+def format_releases_tsv(releases: List[Dict]) -> str:
+    """Format releases as TSV."""
+    lines = []
+    for release in releases:
+        lines.append(
+            f"{release['release_date']}\t{release['artist']}\t{release['track']}\t"
+            f"{release['album']}\t{release['album_type']}\t{release['isrc']}\t{release['spotify_url']}"
+        )
+    return '\n'.join(lines)
+
+
+def format_releases_csv(releases: List[Dict]) -> str:
+    """Format releases as CSV."""
+    import csv
+    from io import StringIO
+
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['date', 'artist', 'track', 'album', 'type', 'isrc', 'url', 'popularity'])
+
+    for release in releases:
+        writer.writerow([
+            release['release_date'],
+            release['artist'],
+            release['track'],
+            release['album'],
+            release['album_type'],
+            release['isrc'],
+            release['spotify_url'],
+            release.get('popularity', '')
+        ])
+
+    return output.getvalue().rstrip()
+
+
+def format_releases_json(releases: List[Dict], meta: Dict) -> str:
+    """Format releases as JSON."""
+    import json
+    output = {
+        'releases': releases,
+        'meta': meta
+    }
+    return json.dumps(output, indent=2, ensure_ascii=False)
+
+
+def format_releases_table(releases: List[Dict], tracker: SpotifyReleaseTracker, db: ArtistDatabase) -> str:
+    """Format releases as pretty table (human-readable)."""
+    lines = []
+    lines.append("=" * 80)
+    lines.append("SPOTIFY RECENT RELEASE TRACKER")
+    lines.append("=" * 80)
+    lines.append(f"Cutoff Date: {tracker.cutoff_date.date()} ({tracker.lookback_days} days ago)")
+    lines.append(f"Total Artists in DB: {db.get_artist_count()}")
+    lines.append(f"Total Releases Found: {len(releases)}")
+    lines.append("=" * 80)
+    lines.append("")
+
+    if releases:
+        for release in releases:
+            lines.append(f"🎵 {release['artist']} - {release['track']}")
+            lines.append(f"   Album: {release['album']} ({release['album_type']})")
+            lines.append(f"   Released: {release['release_date']}")
+            lines.append(f"   ISRC: {release['isrc']}")
+            lines.append(f"   URL: {release['spotify_url']}")
+            if release.get('popularity'):
+                lines.append(f"   Popularity: {release['popularity']}")
+            lines.append("")
+    else:
+        lines.append("No recent releases found.")
+        lines.append("")
+
+    return '\n'.join(lines)
+
+
 def cmd_import_txt(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
 
     """Handle import-txt command with error handling."""
@@ -875,30 +953,22 @@ def cmd_list(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
 def cmd_track(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
     """Handle track command."""
     logger.info("Starting artist tracking from database...")
-    results = tracker.track_artists_from_db(db)
 
-    # Print results
-    # Print results
-    if args.pretty:
-        print("\n" + "="*80)
-        print("SPOTIFY RECENT RELEASE TRACKER")
-        print("="*80)
-        print(f"Cutoff Date: {tracker.cutoff_date.date()} ({tracker.LOOKBACK_DAYS} days ago)")
-        print(f"Total Artists in DB: {db.get_artist_count()}")
-        print(f"Total Releases Found: {results['total_releases']}")
-        print(f"Artists with Releases: {results['artists_processed']}")
-        print("="*80 + "\n")
+    # Get max_per_artist if specified
+    max_per_artist = getattr(args, 'max_per_artist', None)
+    results = tracker.track_artists_from_db(db, max_per_artist=max_per_artist)
 
-        if results['releases']:
-            for release in results['releases']:
-                print(f"🎵 {release['artist']} - {release['track']}")
-                print(f"   Album: {release['album']} ({release['album_type']})")
-                print(f"   Released: {release['release_date']}")
-                print(f"   ISRC: {release['isrc']}")
-                print(f"   URL: {release['spotify_url']}")
-                print()
-        else:
-            print("No recent releases found.\n")
+    # Determine output format
+    output_format = getattr(args, 'format', 'tsv')
+
+    # Handle legacy --pretty flag (maps to table format)
+    if getattr(args, 'pretty', False):
+        output_format = 'table'
+
+    # Print results based on format
+    if output_format == 'table':
+        output = format_releases_table(results['releases'], tracker, db)
+        print("\n" + output)
 
         if results['missing_artists']:
             print("="*80)
@@ -909,12 +979,26 @@ def cmd_track(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
                 if artist_info:
                     print(f"  - {artist_info[2]} (ID: {artist_id})")
             print()
-            
-    else:
-        # Machine-readable output (TSV)
-        # release_date, artist, track, album, album_type, isrc, spotify_url
-        for release in results['releases']:
-            print(f"{release['release_date']}\t{release['artist']}\t{release['track']}\t{release['album']}\t{release['album_type']}\t{release['isrc']}\t{release['spotify_url']}")
+
+    elif output_format == 'json':
+        meta = {
+            'total': results['total_releases'],
+            'cutoff_date': tracker.cutoff_date.date().isoformat(),
+            'artists_tracked': db.get_artist_count(),
+            'artists_with_releases': results['artists_processed'],
+            'lookback_days': tracker.lookback_days
+        }
+        output = format_releases_json(results['releases'], meta)
+        print(output)
+
+    elif output_format == 'csv':
+        output = format_releases_csv(results['releases'])
+        print(output)
+
+    else:  # tsv (default)
+        output = format_releases_tsv(results['releases'])
+        if output:
+            print(output)
 
 
 def cmd_export(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
@@ -1009,8 +1093,37 @@ def cmd_remove(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
         sys.exit(1)
 
 
-def cmd_debug_playlist(args, tracker: SpotifyReleaseTracker):
-    """Handle debug-playlist command (one-time session, no DB persistence)."""
+def cmd_stats(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
+    """Handle stats command - show database statistics."""
+    artists = db.get_all_artists()
+    total_count = len(artists)
+
+    print("\n" + "="*80)
+    print("DATABASE STATISTICS")
+    print("="*80)
+    print(f"Total Artists Tracked: {total_count}")
+    print(f"Lookback Window: {tracker.lookback_days} days")
+    print(f"Cutoff Date: {tracker.cutoff_date.date()}")
+    print(f"Database File: {db.db_path}")
+
+    if artists:
+        # Find most recently added
+        most_recent = artists[0]  # Already sorted by date_added DESC
+        date_obj = datetime.fromisoformat(most_recent[1])
+        print(f"\nMost Recently Added: {most_recent[2]}")
+        print(f"  Added: {date_obj.strftime('%Y-%m-%d %H:%M')}")
+
+        # Find oldest
+        oldest = artists[-1]
+        date_obj = datetime.fromisoformat(oldest[1])
+        print(f"\nOldest Entry: {oldest[2]}")
+        print(f"  Added: {date_obj.strftime('%Y-%m-%d %H:%M')}")
+
+    print("="*80 + "\n")
+
+
+def cmd_preview(args, tracker: SpotifyReleaseTracker):
+    """Handle preview command (one-time session, no DB persistence)."""
     try:
         max_per_artist = getattr(args, 'max_per_artist', None)
         results = tracker.track_from_playlist_onetime(args.playlist, max_per_artist)
@@ -1122,9 +1235,33 @@ Examples:
         help='Track recent releases from database (default)'
     )
     parser_track.add_argument(
+        '--format', '-f',
+        choices=['tsv', 'json', 'csv', 'table'],
+        default='tsv',
+        help='Output format: tsv (default), json, csv, or table (human-readable)'
+    )
+    parser_track.add_argument(
         '--pretty', '-p',
         action='store_true',
-        help='formatting for human readability'
+        help='Use table format for human readability (legacy, use --format table instead)'
+    )
+    parser_track.add_argument(
+        '--days', '-d',
+        type=int,
+        default=None,
+        help='Days to look back (default: 90)'
+    )
+    parser_track.add_argument(
+        '--since',
+        type=str,
+        default=None,
+        help='Start date in YYYY-MM-DD format (overrides --days)'
+    )
+    parser_track.add_argument(
+        '--max-per-artist', '-m',
+        type=int,
+        default=None,
+        help='Cap number of tracks per artist (uses popularity ranking)'
     )
 
     # export command
@@ -1159,10 +1296,32 @@ Examples:
         help='Artist name or Spotify ID to remove'
     )
 
-    # debug-playlist command (one-time session)
+    # stats command
+    parser_stats = subparsers.add_parser(
+        'stats',
+        help='Show database statistics and overview'
+    )
+
+    # preview command (one-time session)
+    parser_preview = subparsers.add_parser(
+        'preview',
+        help='One-time session: track releases from a playlist without storing to DB'
+    )
+    parser_preview.add_argument(
+        'playlist',
+        help='Spotify playlist ID, URI, or URL'
+    )
+    parser_preview.add_argument(
+        '--max-per-artist', '-m',
+        type=int,
+        default=None,
+        help='Cap number of tracks per artist (uses popularity ranking)'
+    )
+
+    # Keep debug-playlist as alias for backwards compatibility
     parser_debug_playlist = subparsers.add_parser(
         'debug-playlist',
-        help='One-time session: track releases from a playlist without storing to DB'
+        help='Deprecated: Use "preview" instead'
     )
     parser_debug_playlist.add_argument(
         'playlist',
@@ -1192,8 +1351,22 @@ Examples:
         )
         sys.exit(1)
 
+    # Calculate lookback days based on arguments
+    lookback_days = None
+    if args.command == 'track':
+        if args.since:
+            # Parse since date and calculate days
+            try:
+                since_date = datetime.strptime(args.since, '%Y-%m-%d')
+                lookback_days = (datetime.now() - since_date).days
+            except ValueError:
+                logger.error(f"Invalid date format for --since: {args.since}. Use YYYY-MM-DD.")
+                sys.exit(1)
+        elif args.days:
+            lookback_days = args.days
+
     # Initialize tracker and database
-    tracker = SpotifyReleaseTracker(client_id, client_secret)
+    tracker = SpotifyReleaseTracker(client_id, client_secret, lookback_days=lookback_days)
     db = ArtistDatabase('artists.db')
 
     # Execute command
@@ -1211,8 +1384,14 @@ Examples:
         cmd_export(args, tracker, db)
     elif args.command == 'remove':
         cmd_remove(args, tracker, db)
+    elif args.command == 'stats':
+        cmd_stats(args, tracker, db)
+    elif args.command == 'preview':
+        cmd_preview(args, tracker)
     elif args.command == 'debug-playlist':
-        cmd_debug_playlist(args, tracker)
+        # Legacy alias - show deprecation warning
+        sys.stderr.write("Warning: 'debug-playlist' is deprecated. Use 'preview' instead.\n")
+        cmd_preview(args, tracker)
     else:
         parser.print_help()
 
