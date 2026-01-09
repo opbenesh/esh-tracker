@@ -8,7 +8,8 @@ All tests use mocked Spotify API - no network calls are made.
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, mock_open
-from spotify_tracker import SpotifyReleaseTracker
+from artist_tracker.tracker import SpotifyReleaseTracker
+from artist_tracker.exceptions import SpotifyAPIError
 
 
 class TestSpotifyReleaseTracker(unittest.TestCase):
@@ -17,8 +18,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         # Mock the SpotifyClientCredentials to prevent network calls
-        with patch('spotify_tracker.SpotifyClientCredentials'):
-            with patch('spotify_tracker.spotipy.Spotify'):
+        with patch('artist_tracker.tracker.SpotifyClientCredentials'):
+            with patch('artist_tracker.tracker.spotipy.Spotify'):
                 self.tracker = SpotifyReleaseTracker(
                     client_id='test_client_id',
                     client_secret='test_client_secret'
@@ -74,7 +75,7 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         date = self.tracker._parse_release_date('invalid-date')
         self.assertIsNone(date)
 
-    @patch('spotify_tracker.datetime')
+    @patch('artist_tracker.tracker.datetime')
     def test_lookback_window_boundary_keep(self, mock_datetime):
         """Test that releases exactly 90 days ago are kept."""
         # Fixed current date: 2024-06-01
@@ -82,8 +83,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         mock_datetime.strptime = datetime.strptime
 
         # Reinitialize tracker with mocked date
-        with patch('spotify_tracker.SpotifyClientCredentials'):
-            with patch('spotify_tracker.spotipy.Spotify'):
+        with patch('artist_tracker.tracker.SpotifyClientCredentials'):
+            with patch('artist_tracker.tracker.spotipy.Spotify'):
                 tracker = SpotifyReleaseTracker('test_id', 'test_secret')
                 tracker.sp = Mock()
 
@@ -95,7 +96,7 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         release_date = datetime(2024, 3, 3)
         self.assertGreaterEqual(release_date, tracker.cutoff_date)
 
-    @patch('spotify_tracker.datetime')
+    @patch('artist_tracker.tracker.datetime')
     def test_lookback_window_boundary_discard(self, mock_datetime):
         """Test that releases 91 days ago are discarded."""
         # Fixed current date: 2024-06-01
@@ -103,8 +104,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         mock_datetime.strptime = datetime.strptime
 
         # Reinitialize tracker with mocked date
-        with patch('spotify_tracker.SpotifyClientCredentials'):
-            with patch('spotify_tracker.spotipy.Spotify'):
+        with patch('artist_tracker.tracker.SpotifyClientCredentials'):
+            with patch('artist_tracker.tracker.spotipy.Spotify'):
                 tracker = SpotifyReleaseTracker('test_id', 'test_secret')
                 tracker.sp = Mock()
 
@@ -179,15 +180,15 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         name = self.tracker._get_artist_name('artist123')
         self.assertEqual(name, 'Taylor Swift')
 
-    @patch('spotify_tracker.datetime')
+    @patch('artist_tracker.tracker.datetime')
     def test_isrc_deduplication(self, mock_datetime):
         """Test ISRC-based deduplication."""
         # Fixed current date
         mock_datetime.now.return_value = datetime(2024, 6, 1)
         mock_datetime.strptime = datetime.strptime
 
-        with patch('spotify_tracker.SpotifyClientCredentials'):
-            with patch('spotify_tracker.spotipy.Spotify'):
+        with patch('artist_tracker.tracker.SpotifyClientCredentials'):
+            with patch('artist_tracker.tracker.spotipy.Spotify'):
                 tracker = SpotifyReleaseTracker('test_id', 'test_secret')
                 tracker.sp = Mock()
 
@@ -246,15 +247,15 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         self.assertEqual(len(releases), 1)
         self.assertEqual(releases[0]['isrc'], 'USABC1234567')
 
-    @patch('spotify_tracker.datetime')
+    @patch('artist_tracker.tracker.datetime')
     def test_get_recent_releases_integration(self, mock_datetime):
         """Integration test for getting recent releases."""
         # Fixed current date: 2024-06-01
         mock_datetime.now.return_value = datetime(2024, 6, 1)
         mock_datetime.strptime = datetime.strptime
 
-        with patch('spotify_tracker.SpotifyClientCredentials'):
-            with patch('spotify_tracker.spotipy.Spotify'):
+        with patch('artist_tracker.tracker.SpotifyClientCredentials'):
+            with patch('artist_tracker.tracker.spotipy.Spotify'):
                 tracker = SpotifyReleaseTracker('test_id', 'test_secret')
                 tracker.sp = Mock()
 
@@ -317,8 +318,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         self.assertIn('error', results)
 
     @patch('builtins.open', new_callable=mock_open, read_data='Taylor Swift\nspotify:artist:123\n# Comment\n')
-    @patch('spotify_tracker.as_completed')
-    @patch('spotify_tracker.ThreadPoolExecutor')
+    @patch('artist_tracker.tracker.as_completed')
+    @patch('artist_tracker.tracker.ThreadPoolExecutor')
     def test_track_artists_integration(self, mock_executor, mock_as_completed, mock_file):
         """Integration test for tracking multiple artists."""
         # Create proper mock futures
@@ -435,9 +436,9 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
 class TestDateBoundaries(unittest.TestCase):
     """Specific tests for the 90-day boundary as per spec."""
 
-    @patch('spotify_tracker.datetime')
-    @patch('spotify_tracker.SpotifyClientCredentials')
-    @patch('spotify_tracker.spotipy.Spotify')
+    @patch('artist_tracker.tracker.datetime')
+    @patch('artist_tracker.tracker.SpotifyClientCredentials')
+    @patch('artist_tracker.tracker.spotipy.Spotify')
     def test_spec_example_90_days_keep(self, mock_spotify, mock_creds, mock_datetime):
         """Test spec example: Date 2024-03-03 (90 days ago) -> KEEP."""
         # Current date: 2024-06-01
@@ -454,9 +455,9 @@ class TestDateBoundaries(unittest.TestCase):
         release_date = datetime(2024, 3, 3)
         self.assertGreaterEqual(release_date, tracker.cutoff_date)
 
-    @patch('spotify_tracker.datetime')
-    @patch('spotify_tracker.SpotifyClientCredentials')
-    @patch('spotify_tracker.spotipy.Spotify')
+    @patch('artist_tracker.tracker.datetime')
+    @patch('artist_tracker.tracker.SpotifyClientCredentials')
+    @patch('artist_tracker.tracker.spotipy.Spotify')
     def test_spec_example_91_days_discard(self, mock_spotify, mock_creds, mock_datetime):
         """Test spec example: Date 2024-03-02 (91 days ago) -> DISCARD."""
         # Current date: 2024-06-01
@@ -479,15 +480,15 @@ class TestRetryLogic(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        with patch('spotify_tracker.SpotifyClientCredentials'):
-            with patch('spotify_tracker.spotipy.Spotify'):
+        with patch('artist_tracker.tracker.SpotifyClientCredentials'):
+            with patch('artist_tracker.tracker.spotipy.Spotify'):
                 self.tracker = SpotifyReleaseTracker(
                     client_id='test_client_id',
                     client_secret='test_client_secret'
                 )
                 self.tracker.sp = Mock()
 
-    @patch('spotify_tracker.time.sleep')
+    @patch('artist_tracker.tracker.time.sleep')
     def test_retry_on_server_error(self, mock_sleep):
         """Test that server errors (5xx) trigger retry."""
         from spotipy.exceptions import SpotifyException
@@ -504,7 +505,7 @@ class TestRetryLogic(unittest.TestCase):
         self.assertEqual(self.tracker.sp.search.call_count, 2)
         mock_sleep.assert_called()  # Should have slept between retries
 
-    @patch('spotify_tracker.time.sleep')
+    @patch('artist_tracker.tracker.time.sleep')
     def test_retry_on_rate_limit(self, mock_sleep):
         """Test rate limit (429) triggers retry with Retry-After header."""
         from spotipy.exceptions import SpotifyException
@@ -526,7 +527,7 @@ class TestRetryLogic(unittest.TestCase):
     def test_client_error_no_retry(self):
         """Test that client errors (4xx except 429) don't trigger retry."""
         from spotipy.exceptions import SpotifyException
-        from exceptions import SpotifyAPIError
+        from artist_tracker.exceptions import SpotifyAPIError
         
         self.tracker.sp.search.side_effect = SpotifyException(400, -1, 'Bad Request')
         
@@ -542,8 +543,8 @@ class TestErrorHandling(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        with patch('spotify_tracker.SpotifyClientCredentials'):
-            with patch('spotify_tracker.spotipy.Spotify'):
+        with patch('artist_tracker.tracker.SpotifyClientCredentials'):
+            with patch('artist_tracker.tracker.spotipy.Spotify'):
                 self.tracker = SpotifyReleaseTracker(
                     client_id='test_client_id',
                     client_secret='test_client_secret'
@@ -553,7 +554,7 @@ class TestErrorHandling(unittest.TestCase):
     def test_search_artist_api_error(self):
         """Test that API errors are properly propagated."""
         from spotipy.exceptions import SpotifyException
-        from exceptions import SpotifyAPIError
+        from artist_tracker.exceptions import SpotifyAPIError
         
         self.tracker.sp.search.side_effect = SpotifyException(403, -1, 'Forbidden')
         

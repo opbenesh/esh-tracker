@@ -11,8 +11,8 @@ import unittest
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
-from artist_database import ArtistDatabase
-from exceptions import DatabaseError, ValidationError
+from artist_tracker.database import ArtistDatabase
+from artist_tracker.exceptions import DatabaseError, ValidationError
 
 
 class TestArtistDatabase(unittest.TestCase):

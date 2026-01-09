@@ -34,7 +34,7 @@ class TestLiveSpotifyAuthentication(unittest.TestCase):
 
     def test_credentials_authenticate_successfully(self):
         """Verify that credentials from .env work with Spotify API."""
-        from spotify_tracker import SpotifyReleaseTracker
+        from artist_tracker.tracker import SpotifyReleaseTracker
         
         client_id = os.getenv('SPOTIPY_CLIENT_ID')
         client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
@@ -54,7 +54,7 @@ class TestLiveArtistSearch(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Initialize tracker once for all tests."""
-        from spotify_tracker import SpotifyReleaseTracker
+        from artist_tracker.tracker import SpotifyReleaseTracker
         
         cls.tracker = SpotifyReleaseTracker(
             os.getenv('SPOTIPY_CLIENT_ID'),
@@ -99,7 +99,7 @@ class TestLiveReleases(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Initialize tracker once for all tests."""
-        from spotify_tracker import SpotifyReleaseTracker
+        from artist_tracker.tracker import SpotifyReleaseTracker
         
         cls.tracker = SpotifyReleaseTracker(
             os.getenv('SPOTIPY_CLIENT_ID'),
@@ -162,8 +162,8 @@ class TestLivePlaylistImport(unittest.TestCase):
 
     def setUp(self):
         """Initialize tracker and fresh database for each test."""
-        from spotify_tracker import SpotifyReleaseTracker
-        from artist_database import ArtistDatabase
+        from artist_tracker.tracker import SpotifyReleaseTracker
+        from artist_tracker.database import ArtistDatabase
         import tempfile
         
         self.tracker = SpotifyReleaseTracker(
@@ -239,8 +239,8 @@ class TestLiveEndToEnd(unittest.TestCase):
 
     def test_full_workflow_import_and_track(self):
         """Test complete workflow: add artist to DB, then track releases."""
-        from spotify_tracker import SpotifyReleaseTracker
-        from artist_database import ArtistDatabase
+        from artist_tracker.tracker import SpotifyReleaseTracker
+        from artist_tracker.database import ArtistDatabase
         import tempfile
         
         tracker = SpotifyReleaseTracker(
@@ -289,7 +289,7 @@ class TestAPIResponseFormat(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Initialize tracker once for all tests."""
-        from spotify_tracker import SpotifyReleaseTracker
+        from artist_tracker.tracker import SpotifyReleaseTracker
         
         cls.tracker = SpotifyReleaseTracker(
             os.getenv('SPOTIPY_CLIENT_ID'),
@@ -347,8 +347,8 @@ class TestLiveImportFromTxt(unittest.TestCase):
 
     def setUp(self):
         """Initialize tracker and fresh database for each test."""
-        from spotify_tracker import SpotifyReleaseTracker
-        from artist_database import ArtistDatabase
+        from artist_tracker.tracker import SpotifyReleaseTracker
+        from artist_tracker.database import ArtistDatabase
         import tempfile
         
         self.tracker = SpotifyReleaseTracker(
@@ -437,7 +437,7 @@ class TestLiveISRCDeduplication(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Initialize tracker once for all tests."""
-        from spotify_tracker import SpotifyReleaseTracker
+        from artist_tracker.tracker import SpotifyReleaseTracker
         
         cls.tracker = SpotifyReleaseTracker(
             os.getenv('SPOTIPY_CLIENT_ID'),
@@ -466,7 +466,7 @@ class TestLiveNoiseFiltering(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Initialize tracker once for all tests."""
-        from spotify_tracker import SpotifyReleaseTracker
+        from artist_tracker.tracker import SpotifyReleaseTracker
         
         cls.tracker = SpotifyReleaseTracker(
             os.getenv('SPOTIPY_CLIENT_ID'),
@@ -509,8 +509,8 @@ class TestLiveErrorHandling(unittest.TestCase):
 
     def setUp(self):
         """Initialize tracker and fresh database for each test."""
-        from spotify_tracker import SpotifyReleaseTracker
-        from artist_database import ArtistDatabase
+        from artist_tracker.tracker import SpotifyReleaseTracker
+        from artist_tracker.database import ArtistDatabase
         import tempfile
         
         self.tracker = SpotifyReleaseTracker(

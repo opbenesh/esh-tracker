@@ -89,13 +89,13 @@ The tracker uses a SQLite database (`artists.db`) to store your tracked artists.
 
    Then import:
    ```bash
-   python spotify_tracker.py import-txt artists.txt
+   python main.py import-txt artists.txt
    ```
 
 2. **Or import from a Spotify playlist:**
 
    ```bash
-   python spotify_tracker.py import-playlist 37i9dQZF1DXcBWIGoYBM5M
+   python main.py import-playlist 37i9dQZF1DXcBWIGoYBM5M
    ```
 
    This will extract all artists featured in the playlist and add them to your database.
@@ -103,15 +103,15 @@ The tracker uses a SQLite database (`artists.db`) to store your tracked artists.
 3. **List your tracked artists:**
 
    ```bash
-   python spotify_tracker.py list
+   python main.py list
    ```
 
 4. **Track recent releases:**
 
    ```bash
-   python spotify_tracker.py track
+   python main.py track
    # or simply:
-   python spotify_tracker.py
+   python main.py
    ```
 
 ### CLI Commands
@@ -120,7 +120,7 @@ The tracker uses a SQLite database (`artists.db`) to store your tracked artists.
 Import artists from a text file into the database.
 
 ```bash
-python spotify_tracker.py import-txt artists.txt
+python main.py import-txt artists.txt
 ```
 
 The file supports:
@@ -134,10 +134,10 @@ Import all artists from a Spotify playlist.
 
 ```bash
 # Using playlist ID
-python spotify_tracker.py import-playlist 37i9dQZF1DXcBWIGoYBM5M
+python main.py import-playlist 37i9dQZF1DXcBWIGoYBM5M
 
 # Using Spotify URI
-python spotify_tracker.py import-playlist spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
+python main.py import-playlist spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
 ```
 
 This extracts all unique artists featured in any track on the playlist.
@@ -146,7 +146,7 @@ This extracts all unique artists featured in any track on the playlist.
 Display all tracked artists in the database.
 
 ```bash
-python spotify_tracker.py list
+python main.py list
 ```
 
 Shows:
@@ -158,9 +158,9 @@ Shows:
 Track recent releases from all artists in the database (default command).
 
 ```bash
-python spotify_tracker.py track
+python main.py track
 # or simply:
-python spotify_tracker.py
+python main.py
 ```
 
 The tracker will:
@@ -176,10 +176,10 @@ One-time session: track releases from a playlist without storing to database.
 
 ```bash
 # Basic usage
-python spotify_tracker.py debug-playlist "https://open.spotify.com/playlist/6z5jMLEBI3t9sgQ3XDKOJ0"
+python main.py debug-playlist "https://open.spotify.com/playlist/6z5jMLEBI3t9sgQ3XDKOJ0"
 
 # With max tracks per artist (uses popularity ranking)
-python spotify_tracker.py debug-playlist "https://open.spotify.com/playlist/6z5jMLEBI3t9sgQ3XDKOJ0" --max-per-artist 5
+python main.py debug-playlist "https://open.spotify.com/playlist/6z5jMLEBI3t9sgQ3XDKOJ0" --max-per-artist 5
 ```
 
 Accepts:
@@ -194,10 +194,10 @@ Export database to JSON backup file.
 
 ```bash
 # Export to default file (artists_backup.json)
-python spotify_tracker.py export
+python main.py export
 
 # Export to custom file
-python spotify_tracker.py export my_backup.json
+python main.py export my_backup.json
 ```
 
 The exported JSON includes:
@@ -211,7 +211,7 @@ Perfect for backing up your database or transferring artists between machines.
 Import artists from a JSON backup file.
 
 ```bash
-python spotify_tracker.py import-json artists_backup.json
+python main.py import-json artists_backup.json
 ```
 
 This restores artists from a previously exported JSON backup. Artists that already exist in the database will be skipped.
@@ -221,10 +221,10 @@ Remove an artist from the database by name or Spotify ID.
 
 ```bash
 # Remove by artist name (case-insensitive)
-python spotify_tracker.py remove "Taylor Swift"
+python main.py remove "Taylor Swift"
 
 # Remove by Spotify artist ID
-python spotify_tracker.py remove 06HL4z0CvFAxyc27GXpf02
+python main.py remove 06HL4z0CvFAxyc27GXpf02
 ```
 
 The command will:

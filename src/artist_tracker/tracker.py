@@ -21,8 +21,8 @@ import spotipy
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials
 from tqdm import tqdm
-from artist_database import ArtistDatabase
-from exceptions import (
+from .database import ArtistDatabase
+from .exceptions import (
     ArtistNotFoundError,
     PlaylistNotFoundError,
     RateLimitError,
