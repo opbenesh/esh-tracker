@@ -63,3 +63,59 @@ PYTHONPATH=src python3 -m unittest tests/test_live.py -v
 ## Configuration
 - Credentials stored in `.env` file (git-ignored)
 - Required env vars: `SPOTIPY_CLIENT_ID`, `SPOTIPY_CLIENT_SECRET`
+
+## README Design Principles
+
+When maintaining the README, follow these principles:
+
+### 1. Progressive Disclosure
+- Start with **why** (problem statement) before **what** (solution)
+- Quick Start comes before detailed reference documentation
+- Most common use cases appear first, advanced features later
+- Users should find value within the first screen of content
+
+### 2. Scannable Structure
+- Use clear, descriptive headings that form a logical hierarchy
+- Tables for reference material (command options, comparisons)
+- Code blocks for all examples
+- Visual hierarchy guides the eye: h2 for major sections, h3 for subsections
+- Avoid walls of text; break content into digestible chunks
+
+### 3. Example-Driven Documentation
+- Show real, working examples before explaining all options
+- Each command should have at least one basic example
+- Include practical automation examples (cron, pipes, scripts)
+- Examples should be copy-pasteable and actually work
+
+### 4. Completeness Without Overwhelm
+- Cover the full pipeline: Prerequisites → Installation → Configuration → Usage → Troubleshooting
+- Include prerequisite requirements (Python version, accounts needed)
+- Document all commands and their options
+- Provide troubleshooting for common issues
+- Link to deeper documentation (AGENT.md) rather than duplicating it
+
+### 5. Unix Philosophy Emphasis
+- Highlight machine-readable defaults and pipe-friendliness
+- Show examples of composing with standard Unix tools (grep, awk, cron)
+- Document all output formats clearly
+- Emphasize separation of data (stdout) and messages (stderr)
+
+### 6. Clarity and Professionalism
+- Use clear, direct language without unnecessary jargon
+- Minimize emoji use (1-2 for visual anchors in examples is fine, but avoid decoration)
+- Be consistent with terminology throughout
+- Use active voice and imperative mood for instructions
+- Avoid marketing language; let features speak for themselves
+
+### 7. Maintainability
+- Keep Installation and Configuration sections up-to-date with actual setup process
+- When adding new commands, update both Quick Start and Command Reference
+- Verify all examples actually work
+- Use consistent formatting (same code block style, same table format)
+- Include project structure overview for contributor orientation
+
+### 8. User-Focused Organization
+- Separate user documentation (most of README) from developer documentation (AGENT.md)
+- Group by task/workflow rather than by implementation detail
+- Answer "How do I...?" questions in a predictable location
+- Include both task-oriented sections (Basic Workflow) and reference sections (Command Reference)
