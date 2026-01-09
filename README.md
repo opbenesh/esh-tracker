@@ -4,33 +4,37 @@ A Python tool to track recent releases (last 90 days) from your favorite Spotify
 
 ## Features
 
-### Hard Requirements
-- ✅ **Client Credentials Flow**: Uses Spotify's Client Credentials authentication (no browser login required)
-- ✅ **Environment Configuration**: Loads credentials securely from `.env` file
-- ✅ **ISRC Deduplication**: Identifies and removes duplicate recordings using International Standard Recording Code
+### Core Functionality
+- **Release Tracking** — Fetches albums, singles, and compilations from the last 90 days
+- **ISRC Deduplication** — Identifies and removes duplicate recordings using International Standard Recording Code
+- **Noise Filtering** — Automatically skips Live, Remaster, Demo, Commentary, Instrumental, and Karaoke releases
+- **Popularity Ranking** — Tracks include Spotify popularity scores (0-100) for prioritization
 
-### Additional Features
-- ✅ **SQLite Database Storage**: Stores tracked artists with date added, name, and Spotify ID
-- ✅ **Import from Text Files**: Add artists from text files with names or Spotify URIs
-- ✅ **Import from Playlists**: Extract and track all artists from any Spotify playlist
-- ✅ **Database Backup & Restore**: Export and import database to/from JSON files
-- ✅ **Remove Artists**: Delete artists from database by name or Spotify ID
-- ✅ **CLI Commands**: Easy-to-use commands (import-txt, import-playlist, import-json, export, remove, list, track)
-- ✅ **Progress Bars**: Visual feedback with tqdm during long-running operations
-- ✅ **Concurrent Processing**: Processes multiple artists in parallel using ThreadPoolExecutor
-- ✅ **Retry Logic**: Exponential backoff for transient failures and rate limiting
-- ✅ **Input Validation**: Validates Spotify IDs and artist names with detailed error messages
-- ✅ **Custom Exceptions**: Specific exception types for better error handling
-- ✅ **Configuration Management**: Centralized configuration with environment variable support
-- ✅ **90-Day Lookback**: Strict date filtering for releases within the last 90 days
-- ✅ **Partial Date Handling**: Handles year-only and year-month dates (defaults to January 1st)
-- ✅ **Regional Filtering**: Filters results for Israel market (`IL`) to show only playable tracks
-- ✅ **Noise Filtering**: Automatically skips Live, Remaster, Demo, Commentary, Instrumental, and Karaoke releases
-- ✅ **Mixed Input Support**: Accepts both artist names and Spotify URIs (`spotify:artist:...`)
-- ✅ **Missing Artist Detection**: Reports artists that returned no results
-- ✅ **Type Hints**: Full type annotations for better code quality
-- ✅ **Structured Logging**: Detailed logs written to `app.log`
-- ✅ **Comprehensive Tests**: Unit tests with mocked API (zero network calls)
+### Artist Management
+- **SQLite Database** — Persistent storage with date added, name, and Spotify ID
+- **Import from Text Files** — Add artists from `.txt` files with names or Spotify URIs
+- **Import from Playlists** — Extract all artists from any Spotify playlist
+- **Database Backup & Restore** — Export/import database to/from JSON files
+- **Remove Artists** — Delete artists by name or Spotify ID
+
+### One-Time Sessions
+- **Debug Playlist Mode** — Track releases from a playlist without storing to database
+- **Max Tracks per Artist** — Cap results per artist using popularity ranking
+
+### Developer Experience
+- **CLI Commands** — `import-txt`, `import-playlist`, `import-json`, `export`, `remove`, `list`, `track`, `debug-playlist`
+- **Progress Bars** — Visual feedback with tqdm during long-running operations
+- **Concurrent Processing** — Parallel artist processing using ThreadPoolExecutor
+- **Retry Logic** — Exponential backoff for transient failures and rate limiting
+- **Comprehensive Tests** — Unit tests with mocks + live integration tests against Spotify API
+
+### Technical Details
+- **Client Credentials Flow** — Server-to-server authentication (no browser login)
+- **Environment Configuration** — Credentials loaded securely from `.env` file
+- **Input Validation** — Validates Spotify IDs and artist names with detailed error messages
+- **Custom Exceptions** — Specific exception types for better error handling
+- **Type Hints** — Full type annotations throughout the codebase
+- **Structured Logging** — Detailed logs written to `app.log`
 
 ## Installation
 
@@ -167,6 +171,24 @@ The tracker will:
 5. Display results in the console
 6. Log detailed information to `app.log`
 
+#### `debug-playlist <playlist> [--max-per-artist N]`
+One-time session: track releases from a playlist without storing to database.
+
+```bash
+# Basic usage
+python spotify_tracker.py debug-playlist "https://open.spotify.com/playlist/6z5jMLEBI3t9sgQ3XDKOJ0"
+
+# With max tracks per artist (uses popularity ranking)
+python spotify_tracker.py debug-playlist "https://open.spotify.com/playlist/6z5jMLEBI3t9sgQ3XDKOJ0" --max-per-artist 5
+```
+
+Accepts:
+- Playlist URLs (e.g., `https://open.spotify.com/playlist/...`)
+- Playlist URIs (e.g., `spotify:playlist:...`)
+- Playlist IDs (e.g., `6z5jMLEBI3t9sgQ3XDKOJ0`)
+
+Output includes track popularity scores for each release.
+
 #### `export [output_file]`
 Export database to JSON backup file.
 
@@ -211,6 +233,24 @@ The command will:
 3. Display confirmation of removal
 
 ### Output Examples
+
+**Debug playlist (one-time session):**
+```
+================================================================================
+ONE-TIME PLAYLIST SESSION (No data stored)
+================================================================================
+Artists in Playlist: 13
+Artists with Releases: 11
+Total Releases Found: 29
+Max Tracks per Artist: 3
+================================================================================
+
+🎵 Megadeth - Let There Be Shred (pop: 63)
+   Album: Let There Be Shred (single)
+   Released: 2025-12-19
+   ISRC: ITG272600074
+   URL: https://open.spotify.com/track/18HAI5WUpc0f18ZpCDrPa0
+```
 
 **Import from text file:**
 ```
@@ -319,17 +359,39 @@ The database file is automatically excluded from git (in `.gitignore`).
 
 Run the test suite:
 ```bash
-# Run tracker tests
+# Run unit tests (mocked API, no network calls)
 python -m unittest test_spotify_tracker.py -v
 
 # Run database tests
 python -m unittest test_artist_database.py -v
 
+# Run live integration tests (requires .env credentials)
+python -m unittest test_spotify_tracker_live.py -v
+
 # Run all tests
 python -m unittest discover -v
 ```
 
-All tests use mocked Spotify API - no network calls are made.
+### Test Coverage
+
+The test suite includes:
+
+**Unit Tests (32 tests)**
+- Date parsing (full, partial, invalid)
+- ISRC deduplication
+- Noise filtering
+- Artist search and ID parsing
+- Playlist import with pagination
+- Retry logic (server errors, rate limiting)
+- Error handling
+
+**Live Integration Tests (23 tests)**
+- Real Spotify API calls
+- Import from txt files
+- Import from playlists (end-to-end)
+- ISRC deduplication validation
+- Noise filtering validation
+- Error handling for invalid IDs
 
 ### Type Checking
 
@@ -343,7 +405,7 @@ Run mypy:
 mypy spotify_tracker.py
 ```
 
-### Test Coverage
+### Test Coverage Report
 
 Run with coverage:
 ```bash
@@ -370,9 +432,6 @@ class SpotifyReleaseTracker:
         'live', 'remaster', 'demo', 'commentary',
         'instrumental', 'karaoke'
     ]
-
-    # Market for regional filtering
-    MARKET = 'IL'
 
     # Lookback window in days
     LOOKBACK_DAYS = 90
@@ -414,10 +473,15 @@ Automatically skips releases containing:
 - "Instrumental" (instrumental versions)
 - "Karaoke" (karaoke tracks)
 
-### 7. Concurrent Processing
+### 7. Popularity Ranking
+Each track includes a Spotify popularity score (0-100):
+- Based on total plays and recency of plays
+- Used for capping results with `--max-per-artist` option
+
+### 8. Concurrent Processing
 Uses ThreadPoolExecutor to process multiple artists in parallel for faster execution.
 
-### 8. Error Handling & Retry Logic
+### 9. Error Handling & Retry Logic
 The tracker implements robust error handling:
 - **Exponential Backoff**: Retries failed requests with increasing delays (2s, 4s, 8s)
 - **Rate Limit Handling**: Honors Spotify's `Retry-After` header for 429 responses
@@ -435,30 +499,8 @@ Detailed logs are written to `app.log`:
 2024-06-01 10:15:25 - INFO - Skipping 'Cruel Summer - Live' - contains noise keyword
 2024-06-01 10:15:26 - INFO - Skipped track 'Love Story' because ISRC 'USCJY1031731' was already seen
 2024-06-01 10:15:27 - INFO - Found 5 unique recent releases for 'Taylor Swift'
+2024-06-01 10:15:28 - INFO - Capping 15 releases to top 5 by popularity for 'Artist Name'
 ```
-
-## Testing Strategy
-
-The test suite includes:
-
-### Zero Network Tests
-All tests use `unittest.mock` to mock the Spotify client - no real API requests occur.
-
-### Deterministic Time
-Tests mock `datetime` to a fixed date (2024-06-01) for reproducible results.
-
-### Boundary Testing
-Specific test cases verify the 90-day boundary:
-- Input: Date `2024-03-03` (90 days ago) → Result: **KEEP** ✅
-- Input: Date `2024-03-02` (91 days ago) → Result: **DISCARD** ❌
-
-### Coverage
-- Date parsing (full, partial, invalid)
-- ISRC deduplication
-- Noise filtering
-- Artist search and ID parsing
-- Concurrent processing
-- Missing file handling
 
 ## Troubleshooting
 
@@ -474,7 +516,7 @@ cat .env
 - Artist may not have releases in the last 90 days
 
 ### Rate Limiting
-If you're tracking many artists, Spotify may rate limit your requests. The tool handles this gracefully and will log errors.
+If you're tracking many artists, Spotify may rate limit your requests. The tool handles this gracefully with automatic retries.
 
 ## License
 
@@ -483,7 +525,7 @@ MIT License - feel free to use and modify as needed.
 ## Contributing
 
 Contributions welcome! Please ensure:
-1. All tests pass: `python -m unittest test_spotify_tracker.py`
+1. All tests pass: `python -m unittest discover -v`
 2. Type checking passes: `mypy spotify_tracker.py`
 3. Code follows existing style conventions
 
