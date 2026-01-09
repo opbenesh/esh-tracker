@@ -878,37 +878,43 @@ def cmd_track(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
     results = tracker.track_artists_from_db(db)
 
     # Print results
-    print("\n" + "="*80)
-    print("SPOTIFY RECENT RELEASE TRACKER")
-    print("="*80)
-    print(f"Cutoff Date: {tracker.cutoff_date.date()} ({tracker.LOOKBACK_DAYS} days ago)")
-    print(f"Total Artists in DB: {db.get_artist_count()}")
-    print(f"Total Releases Found: {results['total_releases']}")
-    print(f"Artists with Releases: {results['artists_processed']}")
-    print("="*80 + "\n")
+    # Print results
+    if args.pretty:
+        print("\n" + "="*80)
+        print("SPOTIFY RECENT RELEASE TRACKER")
+        print("="*80)
+        print(f"Cutoff Date: {tracker.cutoff_date.date()} ({tracker.LOOKBACK_DAYS} days ago)")
+        print(f"Total Artists in DB: {db.get_artist_count()}")
+        print(f"Total Releases Found: {results['total_releases']}")
+        print(f"Artists with Releases: {results['artists_processed']}")
+        print("="*80 + "\n")
 
-    # Print releases
-    if results['releases']:
-        for release in results['releases']:
-            print(f"🎵 {release['artist']} - {release['track']}")
-            print(f"   Album: {release['album']} ({release['album_type']})")
-            print(f"   Released: {release['release_date']}")
-            print(f"   ISRC: {release['isrc']}")
-            print(f"   URL: {release['spotify_url']}")
+        if results['releases']:
+            for release in results['releases']:
+                print(f"🎵 {release['artist']} - {release['track']}")
+                print(f"   Album: {release['album']} ({release['album_type']})")
+                print(f"   Released: {release['release_date']}")
+                print(f"   ISRC: {release['isrc']}")
+                print(f"   URL: {release['spotify_url']}")
+                print()
+        else:
+            print("No recent releases found.\n")
+
+        if results['missing_artists']:
+            print("="*80)
+            print("⚠️  ARTISTS WITH NO RECENT RELEASES")
+            print("="*80)
+            for artist_id in results['missing_artists']:
+                artist_info = db.get_artist_by_id(artist_id)
+                if artist_info:
+                    print(f"  - {artist_info[2]} (ID: {artist_id})")
             print()
+            
     else:
-        print("No recent releases found.\n")
-
-    # Print missing artists
-    if results['missing_artists']:
-        print("="*80)
-        print("⚠️  ARTISTS WITH NO RECENT RELEASES")
-        print("="*80)
-        for artist_id in results['missing_artists']:
-            artist_info = db.get_artist_by_id(artist_id)
-            if artist_info:
-                print(f"  - {artist_info[2]} (ID: {artist_id})")
-        print()
+        # Machine-readable output (TSV)
+        # release_date, artist, track, album, album_type, isrc, spotify_url
+        for release in results['releases']:
+            print(f"{release['release_date']}\t{release['artist']}\t{release['track']}\t{release['album']}\t{release['album_type']}\t{release['isrc']}\t{release['spotify_url']}")
 
 
 def cmd_export(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
@@ -1114,6 +1120,11 @@ Examples:
     parser_track = subparsers.add_parser(
         'track',
         help='Track recent releases from database (default)'
+    )
+    parser_track.add_argument(
+        '--pretty', '-p',
+        action='store_true',
+        help='formatting for human readability'
     )
 
     # export command
