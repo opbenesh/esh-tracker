@@ -40,6 +40,10 @@ ENV/
 *.log
 app.log
 
+# Database
+*.db
+*.db-journal
+
 # OS
 .DS_Store
 Thumbs.db

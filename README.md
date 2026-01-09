@@ -1,6 +1,6 @@
 # Spotify Recent Release Tracker
 
-A Python tool to track recent releases (last 90 days) from your favorite Spotify artists. Features ISRC-based deduplication, noise filtering, and concurrent processing.
+A Python tool to track recent releases (last 90 days) from your favorite Spotify artists. Features ISRC-based deduplication, noise filtering, concurrent processing, and SQLite database storage. Import artists from text files or Spotify playlists!
 
 ## Features
 
@@ -10,6 +10,10 @@ A Python tool to track recent releases (last 90 days) from your favorite Spotify
 - ✅ **ISRC Deduplication**: Identifies and removes duplicate recordings using International Standard Recording Code
 
 ### Additional Features
+- ✅ **SQLite Database Storage**: Stores tracked artists with date added, name, and Spotify ID
+- ✅ **Import from Text Files**: Add artists from text files with names or Spotify URIs
+- ✅ **Import from Playlists**: Extract and track all artists from any Spotify playlist
+- ✅ **CLI Commands**: Easy-to-use commands (import-txt, import-playlist, list, track)
 - ✅ **Concurrent Processing**: Processes multiple artists in parallel using ThreadPoolExecutor
 - ✅ **90-Day Lookback**: Strict date filtering for releases within the last 90 days
 - ✅ **Partial Date Handling**: Handles year-only and year-month dates (defaults to January 1st)
@@ -56,9 +60,15 @@ A Python tool to track recent releases (last 90 days) from your favorite Spotify
    SPOTIPY_CLIENT_SECRET=your_client_secret_here
    ```
 
-5. **Add artists to track:**
+## Usage
 
-   Edit `artists.txt` and add artist names or Spotify URIs (one per line):
+The tracker uses a SQLite database (`artists.db`) to store your tracked artists. You can manage artists using CLI commands.
+
+### Quick Start
+
+1. **Import artists from a text file:**
+
+   Create a file `artists.txt` with artist names or Spotify URIs (one per line):
    ```
    Taylor Swift
    spotify:artist:06HL4z0CvFAxyc27GXpf02
@@ -66,33 +76,131 @@ A Python tool to track recent releases (last 90 days) from your favorite Spotify
    Drake
    ```
 
-## Usage
+   Then import:
+   ```bash
+   python spotify_tracker.py import-txt artists.txt
+   ```
 
-### Basic Usage
+2. **Or import from a Spotify playlist:**
 
-Run the tracker:
+   ```bash
+   python spotify_tracker.py import-playlist 37i9dQZF1DXcBWIGoYBM5M
+   ```
+
+   This will extract all artists featured in the playlist and add them to your database.
+
+3. **List your tracked artists:**
+
+   ```bash
+   python spotify_tracker.py list
+   ```
+
+4. **Track recent releases:**
+
+   ```bash
+   python spotify_tracker.py track
+   # or simply:
+   python spotify_tracker.py
+   ```
+
+### CLI Commands
+
+#### `import-txt <file>`
+Import artists from a text file into the database.
+
 ```bash
+python spotify_tracker.py import-txt artists.txt
+```
+
+The file supports:
+- Plain artist names (e.g., "Taylor Swift")
+- Spotify URIs (e.g., "spotify:artist:06HL4z0CvFAxyc27GXpf02")
+- Comments (lines starting with #)
+- Empty lines (ignored)
+
+#### `import-playlist <playlist_id>`
+Import all artists from a Spotify playlist.
+
+```bash
+# Using playlist ID
+python spotify_tracker.py import-playlist 37i9dQZF1DXcBWIGoYBM5M
+
+# Using Spotify URI
+python spotify_tracker.py import-playlist spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
+```
+
+This extracts all unique artists featured in any track on the playlist.
+
+#### `list`
+Display all tracked artists in the database.
+
+```bash
+python spotify_tracker.py list
+```
+
+Shows:
+- Artist name
+- Date added
+- Spotify artist ID
+
+#### `track`
+Track recent releases from all artists in the database (default command).
+
+```bash
+python spotify_tracker.py track
+# or simply:
 python spotify_tracker.py
 ```
 
-The tool will:
-1. Load artists from `artists.txt`
-2. Search for each artist on Spotify
-3. Fetch all releases from the last 90 days
-4. Remove duplicates using ISRC codes
-5. Filter out noise (live versions, remasters, etc.)
-6. Display results in the console
-7. Log detailed information to `app.log`
+The tracker will:
+1. Load all artists from the database
+2. Fetch releases from the last 90 days for each artist
+3. Remove duplicates using ISRC codes
+4. Filter out noise (live versions, remasters, etc.)
+5. Display results in the console
+6. Log detailed information to `app.log`
 
-### Output Example
+### Output Examples
 
+**Import from text file:**
+```
+================================================================================
+IMPORT FROM TEXT FILE
+================================================================================
+Added: 3 artists
+Skipped (already exists): 1 artists
+
+Total artists in database: 4
+================================================================================
+```
+
+**List tracked artists:**
+```
+================================================================================
+TRACKED ARTISTS
+================================================================================
+Total: 4 artists
+
+  Taylor Swift
+    Added: 2024-06-01 10:30
+    Spotify ID: 06HL4z0CvFAxyc27GXpf02
+
+  Ed Sheeran
+    Added: 2024-06-01 10:30
+    Spotify ID: 6eUKZXaKkcviH0Ku9w2n3V
+
+================================================================================
+```
+
+**Track releases:**
 ```
 ================================================================================
 SPOTIFY RECENT RELEASE TRACKER
 ================================================================================
 Cutoff Date: 2024-03-03 (90 days ago)
+Total Artists in DB: 4
 Total Releases Found: 12
-Artists Processed: 5
+Artists with Releases: 3
 ================================================================================
 
 🎵 Taylor Swift - Cruel Summer
@@ -117,7 +225,7 @@ Please check for typos or use Spotify artist URIs.
 
 ### Input Formats
 
-The `artists.txt` file supports multiple formats:
+Text files for importing support multiple formats:
 
 ```
 # Comments start with #
@@ -133,6 +241,27 @@ spotify:artist:06HL4z0CvFAxyc27GXpf02
 # Spotify IDs also work
 06HL4z0CvFAxyc27GXpf02
 ```
+
+## Database Schema
+
+The tracker uses SQLite to store tracked artists in `artists.db`:
+
+```sql
+CREATE TABLE artists (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date_added TEXT NOT NULL,         -- ISO format timestamp
+    artist_name TEXT NOT NULL,         -- Artist display name
+    spotify_artist_id TEXT NOT NULL UNIQUE  -- Spotify artist ID (unique)
+);
+```
+
+**Features:**
+- **date_added**: Timestamp when the artist was added to the database
+- **artist_name**: Display name of the artist
+- **spotify_artist_id**: Unique Spotify artist ID (prevents duplicates)
+- Indexed on `spotify_artist_id` for fast lookups
+
+The database file is automatically excluded from git (in `.gitignore`).
 
 ## Development
 
@@ -197,22 +326,29 @@ class SpotifyReleaseTracker:
 ### 1. Authentication
 Uses Spotify's Client Credentials Flow for server-to-server authentication (no user login required).
 
-### 2. Artist Lookup
+### 2. Artist Storage
+- Stores tracked artists in SQLite database (`artists.db`)
+- Schema: date_added, artist_name, spotify_artist_id
+- Prevents duplicates using unique constraint on spotify_artist_id
+- Import from text files or Spotify playlists
+
+### 3. Artist Lookup
 - Accepts both artist names and Spotify URIs
 - Searches Spotify API for exact artist matches
+- Stores artist ID and name in database
 - Reports missing artists for manual correction
 
-### 3. Release Discovery
+### 4. Release Discovery
 - Fetches all albums, singles, and compilations
 - Filters by release date (last 90 days)
 - Retrieves track details from each release
 
-### 4. Deduplication (ISRC)
+### 5. Deduplication (ISRC)
 Uses the International Standard Recording Code (ISRC) to identify duplicate recordings:
 - Same song released as a single and on an album → kept once
 - Different versions with different ISRCs → kept separately
 
-### 5. Noise Filtering
+### 6. Noise Filtering
 Automatically skips releases containing:
 - "Live" (live performances)
 - "Remaster" (remastered versions)
@@ -221,7 +357,7 @@ Automatically skips releases containing:
 - "Instrumental" (instrumental versions)
 - "Karaoke" (karaoke tracks)
 
-### 6. Concurrent Processing
+### 7. Concurrent Processing
 Uses ThreadPoolExecutor to process multiple artists in parallel for faster execution.
 
 ## Logging

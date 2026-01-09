@@ -4,17 +4,21 @@ Spotify Recent Release Tracker
 
 Tracks recent releases (last 90 days) from a list of artists.
 Uses Client Credentials Flow and ISRC-based deduplication.
+Stores tracked artists in SQLite database with import from txt files or playlists.
 """
 
+import argparse
 import logging
 import os
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
+from artist_database import ArtistDatabase
 
 
 # Configure logging
@@ -311,6 +315,192 @@ class SpotifyReleaseTracker:
         releases = self._get_recent_releases(artist_id, artist_name)
         return artist_name, releases
 
+    def import_from_txt(
+        self,
+        txt_file: str,
+        db: ArtistDatabase
+    ) -> Tuple[int, int, List[str]]:
+        """
+        Import artists from a text file into the database.
+
+        Args:
+            txt_file: Path to text file containing artist names/IDs
+            db: ArtistDatabase instance
+
+        Returns:
+            Tuple of (added_count, skipped_count, failed_artists)
+        """
+        logger.info(f"Importing artists from {txt_file}...")
+
+        # Read artists from file
+        try:
+            with open(txt_file, 'r', encoding='utf-8') as f:
+                artist_inputs = [line.strip() for line in f if line.strip()]
+        except FileNotFoundError:
+            logger.error(f"File '{txt_file}' not found")
+            return 0, 0, []
+
+        added = 0
+        skipped = 0
+        failed = []
+
+        for artist_input in artist_inputs:
+            artist_id, artist_name = self._parse_artist_input(artist_input)
+
+            # Skip invalid inputs
+            if not artist_id and not artist_name:
+                continue
+
+            # Get artist ID if we have a name
+            if artist_name and not artist_id:
+                artist_id = self._search_artist(artist_name)
+                if not artist_id:
+                    failed.append(artist_input)
+                    continue
+
+            # Get artist name if we have an ID
+            if artist_id and not artist_name:
+                artist_name = self._get_artist_name(artist_id)
+                if not artist_name:
+                    failed.append(artist_input)
+                    continue
+
+            # Add to database
+            if db.add_artist(artist_name, artist_id):
+                added += 1
+            else:
+                skipped += 1
+
+        return added, skipped, failed
+
+    def import_from_playlist(
+        self,
+        playlist_id: str,
+        db: ArtistDatabase
+    ) -> Tuple[int, int]:
+        """
+        Import all artists from a Spotify playlist into the database.
+
+        Args:
+            playlist_id: Spotify playlist ID or URI
+            db: ArtistDatabase instance
+
+        Returns:
+            Tuple of (added_count, skipped_count)
+        """
+        logger.info(f"Importing artists from playlist {playlist_id}...")
+
+        # Extract playlist ID from URI if needed
+        if ':' in playlist_id:
+            playlist_id = playlist_id.split(':')[-1]
+
+        try:
+            # Get playlist tracks
+            results = self.sp.playlist_tracks(playlist_id, market=self.MARKET)
+            tracks = results['items']
+
+            # Handle pagination
+            while results['next']:
+                results = self.sp.next(results)
+                tracks.extend(results['items'])
+
+            # Extract unique artists
+            artists_dict = {}  # artist_id -> artist_name
+            for item in tracks:
+                if item['track'] and item['track']['artists']:
+                    for artist in item['track']['artists']:
+                        artist_id = artist['id']
+                        artist_name = artist['name']
+                        artists_dict[artist_id] = artist_name
+
+            logger.info(f"Found {len(artists_dict)} unique artists in playlist")
+
+            # Add to database
+            artists_list = [(name, artist_id) for artist_id, name in artists_dict.items()]
+            added, skipped = db.add_artists_batch(artists_list)
+
+            return added, skipped
+
+        except Exception as e:
+            logger.error(f"Error importing from playlist: {e}")
+            return 0, 0
+
+    def track_artists_from_db(self, db: ArtistDatabase) -> Dict:
+        """
+        Track recent releases for all artists in the database.
+
+        Args:
+            db: ArtistDatabase instance
+
+        Returns:
+            Dictionary with results and statistics
+        """
+        # Get artist IDs from database
+        artist_ids = db.get_artist_ids()
+
+        if not artist_ids:
+            logger.warning("No artists in database. Use 'import-txt' or 'import-playlist' to add artists.")
+            return {
+                'releases': [],
+                'total_releases': 0,
+                'artists_processed': 0,
+                'missing_artists': []
+            }
+
+        all_releases = []
+        missing_artists = []
+        processed_count = 0
+
+        # Process artists concurrently
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_id = {
+                executor.submit(self._process_artist_by_id, artist_id): artist_id
+                for artist_id in artist_ids
+            }
+
+            for future in as_completed(future_to_id):
+                artist_id = future_to_id[future]
+                try:
+                    artist_name, releases = future.result()
+
+                    if artist_name and not releases:
+                        missing_artists.append(artist_id)
+                    elif releases:
+                        all_releases.extend(releases)
+                        processed_count += 1
+
+                except Exception as e:
+                    logger.error(f"Error processing artist ID '{artist_id}': {e}")
+
+        # Sort releases by date (newest first)
+        all_releases.sort(key=lambda x: x['release_date'], reverse=True)
+
+        return {
+            'releases': all_releases,
+            'total_releases': len(all_releases),
+            'artists_processed': processed_count,
+            'missing_artists': missing_artists
+        }
+
+    def _process_artist_by_id(self, artist_id: str) -> Tuple[Optional[str], List[Dict]]:
+        """
+        Process a single artist by Spotify ID.
+
+        Args:
+            artist_id: Spotify artist ID
+
+        Returns:
+            Tuple of (artist_name, releases_list)
+        """
+        # Get artist name
+        artist_name = self._get_artist_name(artist_id)
+        if not artist_name:
+            return None, []
+
+        # Get recent releases
+        releases = self._get_recent_releases(artist_id, artist_name)
+        return artist_name, releases
+
     def track_artists(self, artists_file: str = 'artists.txt') -> Dict:
         """
         Track recent releases for all artists in the input file.
@@ -365,39 +555,77 @@ class SpotifyReleaseTracker:
         }
 
 
-def main():
-    """Main entry point."""
-    # Load environment variables
-    load_dotenv()
+def cmd_import_txt(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
+    """Handle import-txt command."""
+    added, skipped, failed = tracker.import_from_txt(args.file, db)
 
-    client_id = os.getenv('SPOTIPY_CLIENT_ID')
-    client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
+    print("\n" + "="*80)
+    print("IMPORT FROM TEXT FILE")
+    print("="*80)
+    print(f"Added: {added} artists")
+    print(f"Skipped (already exists): {skipped} artists")
 
-    if not client_id or not client_secret:
-        logger.error(
-            "Missing Spotify credentials. "
-            "Please set SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET in .env file"
-        )
-        return
+    if failed:
+        print(f"\n⚠️  Failed to import {len(failed)} artists:")
+        for artist in failed:
+            print(f"  - {artist}")
+        print("\nPlease check for typos or use Spotify artist URIs.")
 
-    # Initialize tracker
-    tracker = SpotifyReleaseTracker(client_id, client_secret)
+    print(f"\nTotal artists in database: {db.get_artist_count()}")
+    print("="*80 + "\n")
 
-    # Track artists
-    logger.info("Starting artist tracking...")
-    results = tracker.track_artists('artists.txt')
 
-    if 'error' in results:
-        logger.error(results['error'])
-        return
+def cmd_import_playlist(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
+    """Handle import-playlist command."""
+    added, skipped = tracker.import_from_playlist(args.playlist, db)
+
+    print("\n" + "="*80)
+    print("IMPORT FROM SPOTIFY PLAYLIST")
+    print("="*80)
+    print(f"Added: {added} artists")
+    print(f"Skipped (already exists): {skipped} artists")
+    print(f"\nTotal artists in database: {db.get_artist_count()}")
+    print("="*80 + "\n")
+
+
+def cmd_list(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
+    """Handle list command."""
+    artists = db.get_all_artists()
+
+    print("\n" + "="*80)
+    print("TRACKED ARTISTS")
+    print("="*80)
+
+    if not artists:
+        print("No artists in database.")
+        print("\nUse 'import-txt' or 'import-playlist' to add artists.")
+    else:
+        print(f"Total: {len(artists)} artists\n")
+        for db_id, date_added, artist_name, spotify_id in artists:
+            # Parse date
+            date_obj = datetime.fromisoformat(date_added)
+            date_str = date_obj.strftime("%Y-%m-%d %H:%M")
+            print(f"  {artist_name}")
+            print(f"    Added: {date_str}")
+            print(f"    Spotify ID: {spotify_id}")
+            print()
+
+    print("="*80 + "\n")
+
+
+def cmd_track(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
+    """Handle track command."""
+    logger.info("Starting artist tracking from database...")
+    results = tracker.track_artists_from_db(db)
 
     # Print results
     print("\n" + "="*80)
-    print(f"SPOTIFY RECENT RELEASE TRACKER")
+    print("SPOTIFY RECENT RELEASE TRACKER")
     print("="*80)
     print(f"Cutoff Date: {tracker.cutoff_date.date()} ({tracker.LOOKBACK_DAYS} days ago)")
+    print(f"Total Artists in DB: {db.get_artist_count()}")
     print(f"Total Releases Found: {results['total_releases']}")
-    print(f"Artists Processed: {results['artists_processed']}")
+    print(f"Artists with Releases: {results['artists_processed']}")
     print("="*80 + "\n")
 
     # Print releases
@@ -415,11 +643,107 @@ def main():
     # Print missing artists
     if results['missing_artists']:
         print("="*80)
-        print("⚠️  MISSING ARTISTS (no results found)")
+        print("⚠️  ARTISTS WITH NO RECENT RELEASES")
         print("="*80)
-        for artist in results['missing_artists']:
-            print(f"  - {artist}")
-        print("\nPlease check for typos or use Spotify artist URIs.\n")
+        for artist_id in results['missing_artists']:
+            artist_info = db.get_artist_by_id(artist_id)
+            if artist_info:
+                print(f"  - {artist_info[2]} (ID: {artist_id})")
+        print()
+
+
+def main():
+    """Main entry point with CLI commands."""
+    # Load environment variables
+    load_dotenv()
+
+    # Set up argument parser
+    parser = argparse.ArgumentParser(
+        description='Spotify Recent Release Tracker - Track new releases from your favorite artists',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Import artists from a text file
+  python spotify_tracker.py import-txt artists.txt
+
+  # Import artists from a Spotify playlist
+  python spotify_tracker.py import-playlist 37i9dQZF1DXcBWIGoYBM5M
+
+  # List all tracked artists
+  python spotify_tracker.py list
+
+  # Track recent releases (default command)
+  python spotify_tracker.py track
+  python spotify_tracker.py
+        """
+    )
+
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+    # import-txt command
+    parser_import_txt = subparsers.add_parser(
+        'import-txt',
+        help='Import artists from a text file'
+    )
+    parser_import_txt.add_argument(
+        'file',
+        help='Path to text file containing artist names or Spotify URIs'
+    )
+
+    # import-playlist command
+    parser_import_playlist = subparsers.add_parser(
+        'import-playlist',
+        help='Import artists from a Spotify playlist'
+    )
+    parser_import_playlist.add_argument(
+        'playlist',
+        help='Spotify playlist ID or URI'
+    )
+
+    # list command
+    parser_list = subparsers.add_parser(
+        'list',
+        help='List all tracked artists'
+    )
+
+    # track command
+    parser_track = subparsers.add_parser(
+        'track',
+        help='Track recent releases from database (default)'
+    )
+
+    args = parser.parse_args()
+
+    # Default to 'track' command if none specified
+    if not args.command:
+        args.command = 'track'
+
+    # Check credentials
+    client_id = os.getenv('SPOTIPY_CLIENT_ID')
+    client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
+
+    if not client_id or not client_secret:
+        logger.error(
+            "Missing Spotify credentials. "
+            "Please set SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET in .env file"
+        )
+        sys.exit(1)
+
+    # Initialize tracker and database
+    tracker = SpotifyReleaseTracker(client_id, client_secret)
+    db = ArtistDatabase('artists.db')
+
+    # Execute command
+    if args.command == 'import-txt':
+        cmd_import_txt(args, tracker, db)
+    elif args.command == 'import-playlist':
+        cmd_import_playlist(args, tracker, db)
+    elif args.command == 'list':
+        cmd_list(args, tracker, db)
+    elif args.command == 'track':
+        cmd_track(args, tracker, db)
+    else:
+        parser.print_help()
 
 
 if __name__ == '__main__':
