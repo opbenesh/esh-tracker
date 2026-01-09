@@ -580,12 +580,161 @@ class TestErrorHandling(unittest.TestCase):
     def test_import_from_playlist_returns_zero_on_error(self):
         """Test that import_from_playlist returns (0, 0) on error."""
         self.tracker.sp.playlist_tracks.side_effect = Exception('Playlist Error')
-        
+
         mock_db = Mock()
         added, skipped = self.tracker.import_from_playlist('invalid_id', mock_db)
-        
+
         self.assertEqual(added, 0)
         self.assertEqual(skipped, 0)
+
+
+class TestOutputFormatters(unittest.TestCase):
+    """Test output formatting functions."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.sample_releases = [
+            {
+                'artist': 'Test Artist',
+                'album': 'Test Album',
+                'track': 'Test Track',
+                'release_date': '2024-05-15',
+                'album_type': 'single',
+                'isrc': 'TEST123',
+                'spotify_url': 'https://spotify.com/track/1',
+                'popularity': 75
+            }
+        ]
+
+    def test_format_releases_tsv(self):
+        """Test TSV formatting."""
+        from artist_tracker.tracker import format_releases_tsv
+        output = format_releases_tsv(self.sample_releases)
+        self.assertIn('2024-05-15', output)
+        self.assertIn('Test Artist', output)
+        self.assertIn('Test Track', output)
+        self.assertIn('\t', output)  # Should contain tabs
+
+    def test_format_releases_csv(self):
+        """Test CSV formatting."""
+        from artist_tracker.tracker import format_releases_csv
+        output = format_releases_csv(self.sample_releases)
+        self.assertIn('date,artist,track', output)  # Header
+        self.assertIn('2024-05-15,Test Artist,Test Track', output)
+
+    def test_format_releases_json(self):
+        """Test JSON formatting."""
+        from artist_tracker.tracker import format_releases_json
+        import json
+        meta = {'total': 1, 'cutoff_date': '2024-03-01'}
+        output = format_releases_json(self.sample_releases, meta)
+        data = json.loads(output)
+        self.assertIn('releases', data)
+        self.assertIn('meta', data)
+        self.assertEqual(len(data['releases']), 1)
+        self.assertEqual(data['meta']['total'], 1)
+
+    def test_format_releases_table(self):
+        """Test table (pretty) formatting."""
+        from artist_tracker.tracker import format_releases_table
+        from unittest.mock import Mock
+
+        # Mock tracker and db
+        mock_tracker = Mock()
+        mock_tracker.cutoff_date.date.return_value = '2024-03-01'
+        mock_tracker.lookback_days = 90
+        mock_db = Mock()
+        mock_db.get_artist_count.return_value = 5
+
+        output = format_releases_table(self.sample_releases, mock_tracker, mock_db)
+        self.assertIn('SPOTIFY RECENT RELEASE TRACKER', output)
+        self.assertIn('Test Artist - Test Track', output)
+        self.assertIn('🎵', output)
+
+
+class TestCustomLookbackDays(unittest.TestCase):
+    """Test custom lookback days functionality."""
+
+    @patch('artist_tracker.tracker.SpotifyClientCredentials')
+    @patch('artist_tracker.tracker.spotipy.Spotify')
+    def test_custom_lookback_30_days(self, mock_spotify, mock_creds):
+        """Test tracker with custom 30-day lookback."""
+        tracker = SpotifyReleaseTracker('test_id', 'test_secret', lookback_days=30)
+        self.assertEqual(tracker.lookback_days, 30)
+        expected_cutoff = datetime.now() - timedelta(days=30)
+        self.assertEqual(tracker.cutoff_date.date(), expected_cutoff.date())
+
+    @patch('artist_tracker.tracker.SpotifyClientCredentials')
+    @patch('artist_tracker.tracker.spotipy.Spotify')
+    def test_default_lookback_90_days(self, mock_spotify, mock_creds):
+        """Test tracker with default 90-day lookback."""
+        tracker = SpotifyReleaseTracker('test_id', 'test_secret')
+        self.assertEqual(tracker.lookback_days, 90)
+
+    @patch('artist_tracker.tracker.SpotifyClientCredentials')
+    @patch('artist_tracker.tracker.spotipy.Spotify')
+    def test_custom_lookback_365_days(self, mock_spotify, mock_creds):
+        """Test tracker with 1-year lookback."""
+        tracker = SpotifyReleaseTracker('test_id', 'test_secret', lookback_days=365)
+        self.assertEqual(tracker.lookback_days, 365)
+        expected_cutoff = datetime.now() - timedelta(days=365)
+        self.assertEqual(tracker.cutoff_date.date(), expected_cutoff.date())
+
+
+class TestMaxPerArtist(unittest.TestCase):
+    """Test max_per_artist functionality."""
+
+    @patch('artist_tracker.tracker.datetime')
+    @patch('artist_tracker.tracker.SpotifyClientCredentials')
+    @patch('artist_tracker.tracker.spotipy.Spotify')
+    def test_max_per_artist_limits_results(self, mock_spotify, mock_creds, mock_datetime):
+        """Test that max_per_artist caps results and uses popularity ranking."""
+        # Fixed current date
+        mock_datetime.now.return_value = datetime(2024, 6, 1)
+        mock_datetime.strptime = datetime.strptime
+
+        tracker = SpotifyReleaseTracker('test_id', 'test_secret')
+        tracker.sp = Mock()
+
+        # Mock albums with multiple tracks
+        tracker.sp.artist_albums.return_value = {
+            'items': [
+                {
+                    'id': 'album1',
+                    'name': 'Test Album',
+                    'release_date': '2024-05-15',
+                    'album_type': 'album'
+                }
+            ]
+        }
+
+        # Mock album with 5 tracks
+        tracker.sp.album_tracks.return_value = {
+            'items': [
+                {'id': f'track{i}', 'name': f'Track {i}'} for i in range(5)
+            ]
+        }
+
+        # Mock track details with different popularity
+        def mock_track(track_id):
+            track_num = int(track_id[-1])
+            return {
+                'id': track_id,
+                'name': f'Track {track_num}',
+                'external_ids': {'isrc': f'ISRC{track_num}'},
+                'external_urls': {'spotify': f'https://spotify.com/track/{track_id}'},
+                'popularity': 100 - (track_num * 10)  # Track 0 = 100, Track 4 = 60
+            }
+
+        tracker.sp.track.side_effect = mock_track
+
+        # Get releases with max_per_artist=2
+        releases = tracker._get_recent_releases('artist123', 'Test Artist', max_tracks=2)
+
+        # Should only get 2 most popular tracks
+        self.assertEqual(len(releases), 2)
+        self.assertEqual(releases[0]['popularity'], 100)  # Most popular
+        self.assertEqual(releases[1]['popularity'], 90)   # Second most popular
 
 
 if __name__ == '__main__':
