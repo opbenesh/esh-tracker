@@ -29,8 +29,7 @@ ENV/
 # Environment Variables
 .env
 
-# Agent notes
-agent.md
+
 
 # IDE
 .vscode/
