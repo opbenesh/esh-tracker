@@ -41,11 +41,24 @@ python main.py track
 - **Popularity Ranking**: Prioritizes popular tracks.
 - **Resilient**: Handles rate limits and API errors gracefully.
 
-## 💻 Development
+## 💻 Sample Interaction
 
-See [AGENT.md](AGENT.md) for detailed architecture, guidelines, and local setup instructions.
-
-```bash
-# Run tests
-PYTHONPATH=src python3 -m unittest discover tests -v
 ```
+$ python main.py track
+
+🎵 Taylor Swift - Cruel Summer
+   Album: Lover (album)
+   Released: 2024-05-15
+   ISRC: USUG11900198
+   URL: https://open.spotify.com/track/1BxfuPKGuaTgP7aM0Bbdwr
+
+🎵 Drake - Rich Flex
+   Album: Her Loss (album)
+   Released: 2024-04-20
+   ISRC: USCM52201234
+   URL: https://open.spotify.com/track/2Xr1dTzJee307cnzYjUcRZ
+```
+
+## ⚙️ Development
+
+Development documentation can be found in `AGENT.md`.
