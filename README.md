@@ -17,6 +17,17 @@ pip install esh-tracker
 esh-tracker track 37i9dQZF1DWWOaP4H0w5b0
 ```
 
+**Track a single artist:**
+```bash
+$ esh-tracker track --artist="Turnstile"
+
+🎵 Turnstile - Dream Logic
+   Album: Dream Logic - Single
+   Released: 2025-11-14
+   Type: single
+   URL: https://open.spotify.com/...
+```
+
 ## 🎮 What Cool Stuff Can I Do?
 
 ### 1. Build Your Own "Morning Metal" Digest
