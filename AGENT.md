@@ -48,18 +48,68 @@
 pip install -r requirements.txt
 
 # Run the tracker
-python3 main.py [command]
+python main.py [command]
 ```
 
 ## Testing
 ```bash
 # Run all tests (unit + live integration)
-PYTHONPATH=src python3 -m unittest discover tests -v
+# Note: PYTHONPATH=src is required because the package is in src/artist_tracker/
+PYTHONPATH=src python -m unittest discover tests -v
 
 # Run live integration tests specifically
-PYTHONPATH=src python3 -m unittest tests/test_live.py -v
+PYTHONPATH=src python -m unittest tests/test_live.py -v
 ```
 
 ## Configuration
 - Credentials stored in `.env` file (git-ignored)
 - Required env vars: `SPOTIPY_CLIENT_ID`, `SPOTIPY_CLIENT_SECRET`
+
+## README Design Principles
+
+When maintaining the README, follow these principles:
+
+### 1. Show Value Immediately
+- Lead with user benefits and problem-solving, not technical features
+- Include a **Quick Example** section high in the doc showing actual output
+- Users should understand "why this matters" within the first screen
+- Frame features in terms of user pain points (e.g., "never miss a release" vs "90-day tracking window")
+
+### 2. Friendly, Approachable Tone
+- Write conversationally, as if helping a friend
+- Use emojis in section titles for visual anchors (🎵 🚀 📖 🎯 💡 ❓ etc.)
+- Avoid overly formal or academic language
+- Be encouraging and assume the user will succeed
+
+### 3. Focus on Main Operations
+- Document core workflows thoroughly, mention advanced features briefly
+- Don't overwhelm with every option - show the most common use cases
+- Users can explore `--help` for exhaustive options
+- Quality of examples > quantity of examples
+
+### 4. Relatable Examples
+- Use examples from the tool's actual use case (metal/hardcore bands for this project)
+- Keep examples consistent throughout the doc (same artist names)
+- Show realistic scenarios (e.g., tracking dozens of bands, daily digests)
+- Examples should feel authentic to the target user
+
+### 5. Progressive Disclosure
+- Quick Example → Installation → Basic Usage → Pro Tips
+- Most common use cases appear first, advanced features later
+- Keep the initial path to success short and clear
+
+### 6. Scannable Structure
+- Use clear, descriptive headings with emojis
+- Tables for comparisons (output formats, options)
+- Code blocks for all commands
+- Bold text for key concepts within paragraphs
+
+### 7. Unix Philosophy (but don't over-explain it)
+- Show pipe-friendly defaults in examples
+- Demonstrate composition with grep, cron, etc.
+- Let the examples speak for themselves rather than lecturing about philosophy
+
+### 8. Practical Troubleshooting
+- Address common issues concisely
+- Solution-focused (what to do, not just what went wrong)
+- Keep it brief - quick answers to common questions

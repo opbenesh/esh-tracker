@@ -1,151 +1,197 @@
 # 🎵 Spotify Release Tracker
 
-A specialized CLI tool to track, filter, and organize new releases (last 90 days) from your favorite Spotify artists.
+Never miss a new release from your favorite artists. Track hundreds of bands, get notified of new music, and cut through the noise of re-releases and live albums.
 
-Features ISRC-based deduplication, noise filtering (no karaoke/live/demos), and SQLite storage.
+## What It Does
 
-## 🚀 Quick Start
-```bash
-# 1. Install
-pip install -r requirements.txt
+This CLI tool watches your favorite Spotify artists and shows you their recent releases. It's designed for music fans who follow many artists and want to catch new releases without constantly checking Spotify.
 
-# 2. Configure credentials
-cp .env.example .env
-# Edit .env and add SPOTIPY_CLIENT_ID & SPOTIPY_CLIENT_SECRET
+**Perfect for**: Metal fans tracking dozens of bands, playlist curators, music journalists, or anyone who's ever missed an album drop.
 
-# 3. Add artists & Track
-python main.py import-playlist <playlist_id>
-python main.py track
-```
+## ⚡ Quick Example
 
-## 🛠️ Commands
-
-| Command | Usage | Description |
-|---|---|---|
-| **track** | `python main.py track [OPTIONS]` | Fetch releases from tracked artists. See options below. |
-| **import-playlist** | `python main.py import-playlist <id>` | Import all artists from a Spotify playlist. |
-| **import-txt** | `python main.py import-txt <file>` | Import artists from a text file (or `-` for stdin). |
-| **list** | `python main.py list` | Show all artists in the database. |
-| **remove** | `python main.py remove <name>` | Remove an artist by name or ID. |
-| **export** | `python main.py export [file]` | Backup database to JSON. |
-| **import-json** | `python main.py import-json <file>` | Restore from backup. |
-| **stats** | `python main.py stats` | Show database statistics and overview. |
-| **preview** | `python main.py preview <url> [OPTIONS]` | One-time preview of playlist releases without saving. |
-
-### Track Command Options
-
-| Flag | Description | Default |
-|---|---|---|
-| `--format`, `-f` | Output format: `tsv`, `json`, `csv`, or `table` | `tsv` |
-| `--pretty`, `-p` | Use table format (legacy, same as `--format table`) | - |
-| `--days`, `-d` | Days to look back | `90` |
-| `--since` | Start date in YYYY-MM-DD format (overrides `--days`) | - |
-| `--max-per-artist`, `-m` | Cap tracks per artist (by popularity) | unlimited |
-
-### Preview Command Options
-
-| Flag | Description |
-|---|---|
-| `--max-per-artist`, `-m` | Cap tracks per artist (by popularity) |
-
-## ✨ Features
-- **90-Day Window**: Only fetches recent releases.
-- **Smart Deduplication**: Uses ISRC to merge singles/albums.
-- **Noise Filter**: Skips Live, Commentary, Karaoke, etc.
-- **Popularity Ranking**: Prioritizes popular tracks.
-- **Resilient**: Handles rate limits and API errors gracefully.
-
-
-## 💻 Sample Interaction
-
-First, register your favorite artists:
+Here's what a typical session looks like:
 
 ```bash
-$ printf "Converge\nTurnstile" | python main.py import-txt -
-Added: 2, Skipped: 0
-Total artists: 2
-```
+# Add your favorite artists from a playlist
+$ python main.py import-playlist 37i9dQZF1DWWOaP4H0w5b0
+Imported 47 artists from "Heavy Metal Classics"
 
-Check your database stats:
-
-```bash
-$ python main.py stats
-
-================================================================================
-DATABASE STATISTICS
-================================================================================
-Total Artists Tracked: 2
-Lookback Window: 90 days
-Cutoff Date: 2025-10-11
-Database File: artists.db
-...
-```
-
-Run the tracker. By default, it outputs Tab-Separated Values (TSV) for easy processing:
-
-```bash
-$ python main.py track
-2026-01-15	Converge	Atonement (Redux)	Atonement	single	USUG11900199	https://open.spotify.com/track/4kb...
-2026-01-08	Turnstile	New Heart Design (Remix)	New Heart Design	single	USCM52201235	https://open.spotify.com/track/67b...
-```
-
-For human-readable output, use `--format table` (or legacy `--pretty`):
-
-```bash
+# Check what's new (default: last 90 days)
 $ python main.py track --format table
 
 ================================================================================
 SPOTIFY RECENT RELEASE TRACKER
 ================================================================================
-...
-🎵 Converge - Atonement (Redux)
-   Album: Atonement (single)
-   Released: 2026-01-15
-   ISRC: USUG11900199
-   URL: https://open.spotify.com/track/4kbjBiBMv5dZ3eH78f9
+Tracking 47 artists | Releases since 2025-10-11 (90 days)
 
-🎵 Turnstile - New Heart Design (Remix)
-   Album: New Heart Design (single)
-   Released: 2026-01-08
-   ISRC: USCM52201235
-   URL: https://open.spotify.com/track/67bNcGZpXF6rF5e9G8
-   Popularity: 62
+🎵 Converge - Permanent Blue
+   Album: The Dusk In Us (album)
+   Released: 2025-12-18
+   URL: https://open.spotify.com/track/5Z8K...
+
+🎵 Meshuggah - Nostrum
+   Album: Immutable (album)
+   Released: 2026-01-03
+   URL: https://open.spotify.com/track/3hB9...
+
+🎵 Dillinger Escape Plan - Farewell, Mona Lisa
+   Album: Option Paralysis (album)
+   Released: 2025-11-22
+   URL: https://open.spotify.com/track/7xYg...
+
+================================================================================
+Total releases: 3
+================================================================================
 ```
 
-Use JSON output for programmatic processing:
+That's it! You just discovered 3 new albums you might have missed.
+
+## 🚀 Installation
+
+**Prerequisites**: Python 3.7+, Spotify account (free)
+
+1. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Get Spotify API credentials** (takes 2 minutes)
+
+   - Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
+   - Create a new app
+   - Copy your Client ID and Client Secret
+
+3. **Configure credentials**
+   ```bash
+   cp .env.example .env
+   # Edit .env and paste your credentials
+   ```
+
+## 📖 How to Use
+
+### Adding Artists
+
+**From a Spotify playlist** (easiest way):
+```bash
+python main.py import-playlist <playlist_id>
+```
+
+**From a text file**:
+```bash
+# One artist per line
+echo -e "Converge\nTurnstile\nCode Orange" > artists.txt
+python main.py import-txt artists.txt
+
+# Or pipe directly
+echo "Meshuggah" | python main.py import-txt -
+```
+
+### Tracking Releases
+
+**Basic tracking** (shows last 90 days):
+```bash
+python main.py track
+```
+
+**Human-readable format**:
+```bash
+python main.py track --format table
+```
+
+**Custom time range**:
+```bash
+# Last 30 days
+python main.py track --days 30
+
+# Since a specific date
+python main.py track --since 2026-01-01
+```
+
+**Limit per artist** (useful for prolific bands):
+```bash
+# Get only the top 3 most popular tracks per artist
+python main.py track --max-per-artist 3 --format table
+```
+
+### Managing Your List
+
+**See all tracked artists**:
+```bash
+python main.py list
+```
+
+**Remove an artist**:
+```bash
+python main.py remove "Converge"
+```
+
+**Get stats**:
+```bash
+python main.py stats
+```
+
+## 🎯 Output Formats
+
+By default, the tool outputs **TSV** (tab-separated values) - perfect for piping to other tools or importing into spreadsheets:
 
 ```bash
-$ python main.py track --format json
-{
-  "releases": [
-    {
-      "artist": "Converge",
-      "track": "Atonement (Redux)",
-      "release_date": "2026-01-15",
-      ...
-    }
-  ],
-  "meta": {
-    "total": 2,
-    "cutoff_date": "2025-10-11",
-    "artists_tracked": 2
-  }
-}
+$ python main.py track
+2026-01-15	Converge	Permanent Blue	The Dusk In Us	album	USDY41700501	https://...
+2026-01-10	Meshuggah	Nostrum	Immutable	album	SEAN52201145	https://...
 ```
 
-Customize the date range:
+**Other formats**:
 
+| Format | Flag | Use Case |
+|--------|------|----------|
+| **Table** | `--format table` or `-p` | Human-readable terminal output |
+| **JSON** | `--format json` | Programmatic consumption |
+| **CSV** | `--format csv` | Spreadsheet import |
+
+## 💡 Pro Tips
+
+### Daily Digest
+
+Set up a cron job to email yourself daily:
 ```bash
-# Look back 30 days instead of 90
-$ python main.py track --days 30
-
-# Get releases since a specific date
-$ python main.py track --since 2026-01-01
-
-# Limit to top 3 tracks per artist
-$ python main.py track --max-per-artist 3 --format table
+0 9 * * * python main.py track --days 1 --format table | mail -s "New Metal Releases" you@email.com
 ```
 
-## ⚙️ Development
+### Filter by Artist
 
-Development documentation can be found in `AGENT.md`.
+Use standard Unix tools to filter:
+```bash
+python main.py track | grep -i "converge"
+```
+
+### One-Time Preview
+
+Want to check a playlist without adding all artists to your database?
+```bash
+python main.py preview <playlist_url>
+```
+
+## ❓ Troubleshooting
+
+**"No credentials found"**: Make sure `.env` exists and has your Spotify credentials
+
+**"Artist not found"**: Spotify search is spelling-sensitive. Try using `import-playlist` to get exact matches
+
+**Empty results**: Your artists might not have released anything recently. Try `--days 365` for a broader search
+
+**Rate limits**: The tool handles this automatically with backoff. Just be patient on first run with many artists.
+
+## 🎸 Why This Tool Exists
+
+If you follow metal, hardcore, or any genre with lots of artists, you know the pain:
+- Checking Spotify manually every day is tedious
+- Spotify's Release Radar misses stuff
+- You follow 100+ bands and can't keep track
+- Re-releases, live albums, and karaoke versions clutter everything
+
+This tool solves that. It tracks everyone you care about, filters the noise, and gives you a clean list of actual new releases.
+
+---
+
+**Note**: This tool uses the Spotify Web API. Respect their [Terms of Service](https://www.spotify.com/legal/end-user-agreement/).
