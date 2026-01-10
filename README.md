@@ -16,7 +16,7 @@ pip install esh-tracker
 
 **Track a single artist:**
 ```bash
-$ esh-tracker track --artist="Turnstile"
+esh-tracker track --artist="Turnstile"
 
 🎵 Turnstile - Dream Logic
    Album: Dream Logic - Single
