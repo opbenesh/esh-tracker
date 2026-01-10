@@ -13,12 +13,8 @@ This CLI tool watches your favorite Spotify artists and shows you their recent r
 Here's what a typical session looks like:
 
 ```bash
-# Add your favorite artists from a playlist
-$ python main.py import-playlist 37i9dQZF1DWWOaP4H0w5b0
-Imported 47 artists from "Heavy Metal Classics"
-
-# Check what's new (default: last 90 days)
-$ python main.py track --format table
+# Check what's new from artists in a playlist (default: last 90 days)
+$ python main.py track 37i9dQZF1DWWOaP4H0w5b0
 
 ================================================================================
 SPOTIFY RECENT RELEASE TRACKER
@@ -70,113 +66,83 @@ That's it! You just discovered 3 new albums you might have missed.
 
 ## 📖 How to Use
 
-### Adding Artists
-
-**From a Spotify playlist** (easiest way):
-```bash
-python main.py import-playlist <playlist_id>
-```
-
-**From a text file**:
-```bash
-# One artist per line
-echo -e "Converge\nTurnstile\nCode Orange" > artists.txt
-python main.py import-txt artists.txt
-
-# Or pipe directly
-echo "Meshuggah" | python main.py import-txt -
-```
-
 ### Tracking Releases
 
-**Basic tracking** (shows last 90 days):
+**From a playlist** (primary workflow):
 ```bash
-python main.py track
+python main.py track <playlist-id>
 ```
 
-**Human-readable format**:
+**From multiple playlists**:
 ```bash
-python main.py track --format table
+python main.py track <playlist-id-1> <playlist-id-2>
+```
+
+**From your "Liked Songs"**:
+```bash
+python main.py track --liked
+```
+
+**From a single artist**:
+```bash
+python main.py track --artist="Megadeth"
 ```
 
 **Custom time range**:
 ```bash
 # Last 30 days
-python main.py track --days 30
+python main.py track <playlist-id> --days 30
 
 # Since a specific date
-python main.py track --since 2026-01-01
+python main.py track <playlist-id> --since 2026-01-01
 ```
 
 **Limit per artist** (useful for prolific bands):
 ```bash
 # Get only the top 3 most popular tracks per artist
-python main.py track --max-per-artist 3 --format table
-```
-
-### Managing Your List
-
-**See all tracked artists**:
-```bash
-python main.py list
-```
-
-**Remove an artist**:
-```bash
-python main.py remove "Converge"
-```
-
-**Get stats**:
-```bash
-python main.py stats
+python main.py track <playlist-id> --max-per-artist 3
 ```
 
 ## 🎯 Output Formats
 
-By default, the tool outputs **TSV** (tab-separated values) - perfect for piping to other tools or importing into spreadsheets:
+By default, the tool outputs a **human-readable pretty format**. You can change this to TSV, JSON, or CSV for piping to other tools.
 
 ```bash
-$ python main.py track
+# For piping
+$ python main.py track <playlist-id> --format tsv
 2026-01-15	Converge	Permanent Blue	The Dusk In Us	album	USDY41700501	https://...
-2026-01-10	Meshuggah	Nostrum	Immutable	album	SEAN52201145	https://...
 ```
 
 **Other formats**:
 
 | Format | Flag | Use Case |
 |--------|------|----------|
-| **Table** | `--format table` or `-p` | Human-readable terminal output |
-| **JSON** | `--format json` | Programmatic consumption |
-| **CSV** | `--format csv` | Spreadsheet import |
+| **Pretty** | `--format pretty` | Human-readable terminal output (default) |
+| **TSV**    | `--format tsv`    | Pipe-friendly tab-separated values |
+| **JSON**   | `--format json`   | Programmatic consumption |
+| **CSV**    | `--format csv`    | Spreadsheet import |
 
 ## 💡 Pro Tips
 
 ### Daily Digest
 
-Set up a cron job to email yourself daily:
+Set up a cron job to email yourself daily (using TSV for clean output):
 ```bash
-0 9 * * * python main.py track --days 1 --format table | mail -s "New Metal Releases" you@email.com
+0 9 * * * python main.py track <playlist-id> --days 1 --format pretty | mail -s "New Metal Releases" you@email.com
 ```
 
 ### Filter by Artist
 
-Use standard Unix tools to filter:
+Use standard Unix tools to filter (using TSV for reliable parsing):
 ```bash
-python main.py track | grep -i "converge"
-```
-
-### One-Time Preview
-
-Want to check a playlist without adding all artists to your database?
-```bash
-python main.py preview <playlist_url>
+python main.py track <playlist-id> --format tsv | grep -i "converge"
 ```
 
 ## ❓ Troubleshooting
 
 **"No credentials found"**: Make sure `.env` exists and has your Spotify credentials
 
-**"Artist not found"**: Spotify search is spelling-sensitive. Try using `import-playlist` to get exact matches
+**"Artist not found"**: Spotify search is spelling-sensitive.
 
 **Empty results**: Your artists might not have released anything recently. Try `--days 365` for a broader search
 
