@@ -209,7 +209,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
                     'album_type': 'album',
                     'external_urls': {'spotify': 'https://open.spotify.com/album/2'}
                 }
-            ]
+            ],
+            'next': None
         }
 
         # Mock album tracks - same song on both releases
@@ -280,7 +281,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
                     'release_date': '2024-05-20',
                     'album_type': 'album',
                 }
-            ]
+            ],
+            'next': None
         }
 
         # Mock album tracks
@@ -784,7 +786,8 @@ class TestMaxPerArtist(unittest.TestCase):
                     'release_date': '2024-05-15',
                     'album_type': 'album'
                 }
-            ]
+            ],
+            'next': None
         }
 
         # Mock album with 5 tracks
