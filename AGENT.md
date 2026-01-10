@@ -68,6 +68,17 @@ PYTHONPATH=src python -m unittest discover tests -v
 PYTHONPATH=src python -m unittest tests/test_live.py -v
 ```
 
+### Testing Best Practices
+- **Minimize Real API Calls**: When testing or benchmarking, always consider ways to reduce actual API calls to Spotify:
+  - Use **cassette recording** (VCR-style mocking) to record API responses once and replay them for future test runs
+  - Mock Spotify client for unit tests
+  - Use fixed fixtures with pre-recorded data
+  - See `benchmarks/cassette.py` for the cassette recording implementation
+- **Style Preference**: Use **metal bands** for test data and examples whenever possible - it's our thing! 🤘
+  - Examples: Metallica, Iron Maiden, Opeth, Gojira, Slayer, Mastodon, etc.
+  - See `benchmarks/fixtures/` for curated metal artist lists
+  - Keeps tests consistent, authentic, and appropriately heavy
+
 ## Configuration
 - Credentials stored in `.env` file (git-ignored)
 - Required env vars: `SPOTIPY_CLIENT_ID`, `SPOTIPY_CLIENT_SECRET`

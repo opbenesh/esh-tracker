@@ -223,4 +223,32 @@ When implementing optimizations, ensure:
 
 ## Other TODOs
 
+### CI/CD & Automation
+- [ ] Add tests to GitHub Actions
+  - Run unit tests on every PR/push
+  - Run live integration tests (with Spotify API credentials as secrets)
+  - Use PYTHONPATH=src for test execution
+  - Consider running tests in parallel for speed
+- [ ] Add benchmarks to GitHub Actions
+  - Run benchmark suite on main branch merges
+  - Use cassette playback mode (no real API calls)
+  - Store results as artifacts
+  - Compare against baseline and fail if regressions detected
+- [ ] Show live testing status on README
+  - Add GitHub Actions badge for test status
+  - Add badge for benchmark status
+  - Consider adding coverage badge if we add coverage tracking
+  - Example: `[![Tests](https://github.com/opbenesh/artist-tracker/workflows/Tests/badge.svg)](https://github.com/opbenesh/artist-tracker/actions)`
+
+### Benchmark Result Management
+- [ ] Figure out a way to store benchmarks and compare over time
+  - Options to evaluate:
+    - Simple: CSV log file tracked in git (history.csv)
+    - Medium: Version-tagged baseline files (baseline_v1.0.0.json)
+    - Advanced: Store results in external service (GitHub Pages, dedicated DB, or S3)
+  - Implement comparison script for trend analysis
+  - Create visualization for performance over time (optional)
+  - Set up alerts for performance regressions
+  - Document recommended workflow for baseline updates
+
 *Add other non-performance tasks here as they come up*

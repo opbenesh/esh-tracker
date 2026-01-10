@@ -1,0 +1,16 @@
+{
+  "description": "Small benchmark set - 10 metal artists with varied release patterns",
+  "cutoff_date": "2024-12-31",
+  "artists": [
+    {"id": "2ye2Wgw4gimLv2eAKyk1NB", "name": "Metallica", "note": "Legacy thrash, huge catalog"},
+    {"id": "6mdiAmATAx73kdxrNrnlao", "name": "Iron Maiden", "note": "Prolific NWOBHM, consistent releases"},
+    {"id": "0ybFZ2Ab08V8hueghSXm6E", "name": "Opeth", "note": "Progressive death metal, moderate"},
+    {"id": "0GoxHToqK0nmiWJ56rbQnr", "name": "Gojira", "note": "Technical death, selective releases"},
+    {"id": "1IQ2e1buppatiN1bxUVkrk", "name": "Slayer", "note": "Legendary thrash, complete catalog"},
+    {"id": "1Dvfqq39HxvCJ3GvfeIFuT", "name": "Mastodon", "note": "Progressive sludge, consistent"},
+    {"id": "2Lzlsup1VsOWssjMNYjbVj", "name": "Lamb of God", "note": "Groove metal, steady output"},
+    {"id": "2yEwvVSSSUkcLeSTNyHKh8", "name": "Tool", "note": "Progressive, extremely infrequent"},
+    {"id": "5M52tdBnJaKSvOpJGz8mfZ", "name": "Black Sabbath", "note": "Doom pioneers, legacy catalog"},
+    {"id": "05fG473iIaoy82BF1aGhL8", "name": "Slipknot", "note": "Nu-metal, popular and active"}
+  ]
+}

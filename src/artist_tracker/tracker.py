@@ -86,7 +86,7 @@ class SpotifyReleaseTracker:
     MAX_RETRIES = 3
     RETRY_BASE_DELAY = 2.0  # seconds
 
-    def __init__(self, client_id: str, client_secret: str, lookback_days: Optional[int] = None, profiler: Optional[PerformanceStats] = None, db: Optional[ArtistDatabase] = None, force_refresh: bool = False):
+    def __init__(self, client_id: str, client_secret: str, lookback_days: Optional[int] = None, profiler: Optional[PerformanceStats] = None, db: Optional[ArtistDatabase] = None, force_refresh: bool = False, spotify_client=None):
         """
         Initialize the tracker with Spotify credentials.
 
@@ -97,12 +97,16 @@ class SpotifyReleaseTracker:
             profiler: Optional PerformanceStats instance for profiling
             db: Optional ArtistDatabase instance for caching
             force_refresh: If True, bypass cache and fetch fresh data
+            spotify_client: Optional pre-configured Spotify client (for testing/mocking)
         """
-        auth_manager = SpotifyClientCredentials(
-            client_id=client_id,
-            client_secret=client_secret
-        )
-        self.sp = spotipy.Spotify(auth_manager=auth_manager)
+        if spotify_client is not None:
+            self.sp = spotify_client
+        else:
+            auth_manager = SpotifyClientCredentials(
+                client_id=client_id,
+                client_secret=client_secret
+            )
+            self.sp = spotipy.Spotify(auth_manager=auth_manager)
         self.lookback_days = lookback_days if lookback_days is not None else self.LOOKBACK_DAYS
         self.cutoff_date = datetime.now() - timedelta(days=self.lookback_days)
         self.profiler = profiler
