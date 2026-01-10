@@ -192,17 +192,6 @@ If you follow metal, hardcore, or any genre with lots of artists, you know the p
 
 This tool solves that. It tracks everyone you care about, filters the noise, and gives you a clean list of actual new releases.
 
-## 📁 Project Structure
-
-```
-artist-tracker/
-├── main.py                  # CLI entry point
-├── src/artist_tracker/      # Core application code
-├── tests/                   # Test suite
-├── requirements.txt         # Dependencies
-└── .env.example            # Credentials template
-```
-
 ---
 
 **Note**: This tool uses the Spotify Web API. Respect their [Terms of Service](https://www.spotify.com/legal/end-user-agreement/).
