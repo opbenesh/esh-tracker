@@ -61,7 +61,7 @@ esh-tracker track <playlist-id> --format tsv | grep -i "Turnstile"
 # Export everything to JSON for your own dashboard
 esh-tracker track --liked --format json > my_music_data.json
 
-# Get raw Spotify URIs to paste into a playlist
+# Get raw Spotify URIs to paste directly into a playlist (which is a real Spotify feature!)
 esh-tracker track --days 7 --format ids | pbcopy
 ```
 
