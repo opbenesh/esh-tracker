@@ -51,7 +51,7 @@ Keep a single "Tracker" playlist on Spotify. Throw any artist's song in there to
 *   **No cluttering your "Followed Artists" list.**
 *   **Track 1,000+ bands effortlessly.**
 
-### 3. Data Nerd Mode (JSON/TSV)
+### 3. Data Nerd Mode (JSON/TSV/IDs)
 Pipe your release data into standard Unix tools or your own scripts.
 
 ```bash
@@ -60,6 +60,9 @@ esh-tracker track <playlist-id> --format tsv | grep -i "Turnstile"
 
 # Export everything to JSON for your own dashboard
 esh-tracker track --liked --format json > my_music_data.json
+
+# Get raw Spotify URIs to paste into a playlist
+esh-tracker track --days 7 --format ids | pbcopy
 ```
 
 ### 4. Time Travel

@@ -904,6 +904,12 @@ def format_releases_tsv(releases: List[Dict]) -> str:
     return '\n'.join(lines)
 
 
+
+def format_releases_ids(releases: List[Dict]) -> str:
+    """Format releases as a list of Spotify URIs (for pasting into playlists)."""
+    return '\n'.join([f"spotify:track:{r['track_id']}" for r in releases])
+
+
 def format_releases_csv(releases: List[Dict]) -> str:
     """Format releases as CSV."""
     import csv
@@ -1016,6 +1022,11 @@ def cmd_track(args, tracker: SpotifyReleaseTracker):
         output = format_releases_csv(results['releases'])
         print(output)
 
+    elif output_format == 'ids':
+        output = format_releases_ids(results['releases'])
+        if output:
+            print(output)
+
     else:  # tsv (default)
         output = format_releases_tsv(results['releases'])
         if output:
@@ -1085,7 +1096,7 @@ Examples:
 
     parser_track.add_argument(
         '--format', '-f',
-        choices=['tsv', 'json', 'csv', 'pretty'],
+        choices=['tsv', 'json', 'csv', 'pretty', 'ids'],
         default='pretty', # Changed default to pretty for better UX as per user request
         help='Output format: pretty (default), tsv, json, or csv'
     )
