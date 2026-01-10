@@ -446,27 +446,62 @@ class SpotifyReleaseTracker:
         releases = []
 
         try:
-            # Get all album types
+            # Get all album types with pagination and early stopping
             with ProfilerContext(self.profiler, 'fetch_artist_albums') if self.profiler else DummyContext():
-                albums = self._call_api('artist_albums', self.sp.artist_albums,
+                albums_response = self._call_api('artist_albums', self.sp.artist_albums,
                     artist_id,
                     album_type='album,single,compilation',
                     limit=50
                 )
 
-            for album in albums['items']:
-                # Parse release date
+            albums_to_process = []
+            should_stop = False
+
+            # Process first page and check for early stopping
+            for album in albums_response['items']:
                 release_date = self._parse_release_date(album['release_date'])
                 if not release_date:
                     continue
 
-                # Check if within lookback window
+                # Albums are sorted by release_date DESC, so if we hit an old album, we can stop
                 if release_date < self.cutoff_date:
                     logger.debug(
-                        f"Skipping '{album['name']}' - released {release_date.date()} "
-                        f"(before cutoff {self.cutoff_date.date()})"
+                        f"Hit album '{album['name']}' before cutoff ({release_date.date()}). "
+                        f"Stopping pagination (smart filtering)."
                     )
-                    continue
+                    should_stop = True
+                    break
+
+                albums_to_process.append((album, release_date))
+
+            # Fetch remaining pages only if we haven't hit the cutoff
+            while albums_response['next'] and not should_stop:
+                try:
+                    albums_response = self._call_api('artist_albums_next', self.sp.next, albums_response)
+
+                    for album in albums_response['items']:
+                        release_date = self._parse_release_date(album['release_date'])
+                        if not release_date:
+                            continue
+
+                        if release_date < self.cutoff_date:
+                            logger.debug(
+                                f"Hit album '{album['name']}' before cutoff ({release_date.date()}). "
+                                f"Stopping pagination (smart filtering)."
+                            )
+                            should_stop = True
+                            break
+
+                        albums_to_process.append((album, release_date))
+
+                except Exception as e:
+                    logger.warning(f"Error fetching next page of albums for '{artist_name}': {e}")
+                    break
+
+            logger.debug(f"Processing {len(albums_to_process)} albums for '{artist_name}' after smart filtering")
+
+            # Now process the albums we collected
+            for album, release_date in albums_to_process:
 
                 # Check for noise in album title
                 if self._is_noise(album['name']):
