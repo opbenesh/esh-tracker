@@ -29,6 +29,7 @@ from .exceptions import (
     SpotifyAPIError,
     ValidationError
 )
+from .profiler import PerformanceStats, ProfilerContext
 
 
 # Configure logging
@@ -61,6 +62,14 @@ def setup_logging(verbose: bool = False):
 logger = logging.getLogger(__name__)
 
 
+class DummyContext:
+    """Dummy context manager that does nothing (for when profiler is disabled)."""
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
 class SpotifyReleaseTracker:
     """Tracks recent releases from Spotify artists."""
 
@@ -77,7 +86,7 @@ class SpotifyReleaseTracker:
     MAX_RETRIES = 3
     RETRY_BASE_DELAY = 2.0  # seconds
 
-    def __init__(self, client_id: str, client_secret: str, lookback_days: Optional[int] = None):
+    def __init__(self, client_id: str, client_secret: str, lookback_days: Optional[int] = None, profiler: Optional[PerformanceStats] = None, db: Optional[ArtistDatabase] = None, force_refresh: bool = False):
         """
         Initialize the tracker with Spotify credentials.
 
@@ -85,6 +94,9 @@ class SpotifyReleaseTracker:
             client_id: Spotify API client ID
             client_secret: Spotify API client secret
             lookback_days: Optional custom lookback window in days (default: 90)
+            profiler: Optional PerformanceStats instance for profiling
+            db: Optional ArtistDatabase instance for caching
+            force_refresh: If True, bypass cache and fetch fresh data
         """
         auth_manager = SpotifyClientCredentials(
             client_id=client_id,
@@ -93,7 +105,28 @@ class SpotifyReleaseTracker:
         self.sp = spotipy.Spotify(auth_manager=auth_manager)
         self.lookback_days = lookback_days if lookback_days is not None else self.LOOKBACK_DAYS
         self.cutoff_date = datetime.now() - timedelta(days=self.lookback_days)
+        self.profiler = profiler
+        self.db = db
+        self.force_refresh = force_refresh
         logger.info(f"Initialized tracker with cutoff date: {self.cutoff_date.date()} ({self.lookback_days} days)")
+
+    def _call_api(self, endpoint: str, func, *args, **kwargs):
+        """
+        Call Spotify API and record in profiler if enabled.
+
+        Args:
+            endpoint: Name of the API endpoint for profiling
+            func: Function to call
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+
+        Returns:
+            Result from the API call
+        """
+        if self.profiler:
+            self.profiler.record_api_call(endpoint)
+
+        return func(*args, **kwargs)
 
     def _retry_on_error(self, func, *args, max_retries: int = None, **kwargs):
         """
@@ -258,7 +291,7 @@ class SpotifyReleaseTracker:
             SpotifyAPIError: If API call fails after retries
         """
         def search_call():
-            return self.sp.search(
+            return self._call_api('search_artist', self.sp.search,
                 q=f'artist:{artist_name}',
                 type='artist',
                 limit=1
@@ -294,7 +327,7 @@ class SpotifyReleaseTracker:
             Artist name or None if not found
         """
         try:
-            artist = self.sp.artist(artist_id)
+            artist = self._call_api('artist', self.sp.artist, artist_id)
             return artist['name']
         except Exception as e:
             logger.error(f"Error fetching artist ID '{artist_id}': {e}")
@@ -313,16 +346,31 @@ class SpotifyReleaseTracker:
         Returns:
             Tuple of (earliest_date, original_album_name), or (None, None) if search fails
         """
-        # Check cache first (avoid redundant API calls within a session)
+        # Check persistent cache first (if database is available)
+        if self.db:
+            cached_result = self.db.get_cached_isrc_lookup(isrc)
+            if cached_result:
+                if self.profiler:
+                    self.profiler.record_cache_hit()
+                # Convert date string back to datetime
+                earliest_date = self._parse_release_date(cached_result[0])
+                return earliest_date, cached_result[1]
+
+        # Check session cache (avoid redundant API calls within a session)
         if not hasattr(self, '_isrc_info_cache'):
             self._isrc_info_cache: Dict[str, Tuple[Optional[datetime], Optional[str]]] = {}
 
         if isrc in self._isrc_info_cache:
+            if self.profiler:
+                self.profiler.record_cache_hit()
             return self._isrc_info_cache[isrc]
+
+        if self.profiler:
+            self.profiler.record_cache_miss()
 
         try:
             # Search for all tracks with this ISRC
-            results = self.sp.search(q=f"isrc:{isrc}", type="track", limit=50)
+            results = self._call_api('search_isrc', self.sp.search, q=f"isrc:{isrc}", type="track", limit=50)
 
             earliest_date: Optional[datetime] = None
             earliest_album_name: Optional[str] = None
@@ -344,7 +392,14 @@ class SpotifyReleaseTracker:
                     f"on {earliest_date.strftime('%Y-%m-%d')}"
                 )
 
-            # Cache the result
+                # Cache in persistent storage if database is available
+                if self.db:
+                    try:
+                        self.db.cache_isrc_lookup(isrc, earliest_date.strftime('%Y-%m-%d'), earliest_album_name)
+                    except Exception as cache_error:
+                        logger.warning(f"Failed to cache ISRC lookup for '{isrc}': {cache_error}")
+
+            # Cache the result in session cache
             self._isrc_info_cache[isrc] = (earliest_date, earliest_album_name)
             return earliest_date, earliest_album_name
 
@@ -370,30 +425,100 @@ class SpotifyReleaseTracker:
         Returns:
             List of release dictionaries with deduplication
         """
+        # Check cache first if available and not forcing refresh
+        if self.db and not self.force_refresh:
+            cutoff_date_str = self.cutoff_date.strftime('%Y-%m-%d')
+            cached_releases = self.db.get_cached_releases(artist_id, cutoff_date_str)
+
+            if cached_releases:
+                logger.info(f"Using cached releases for artist '{artist_name}' ({len(cached_releases)} releases)")
+                if self.profiler:
+                    self.profiler.record_cache_hit()
+
+                # Convert cached format to output format
+                releases = []
+                for cached in cached_releases:
+                    releases.append({
+                        'artist': artist_name,
+                        'album': cached['album_name'],
+                        'track': cached['track_name'],
+                        'release_date': cached['release_date'],
+                        'album_type': cached['album_type'],
+                        'isrc': cached['isrc'] or 'N/A',
+                        'spotify_url': cached['spotify_url'],
+                        'popularity': cached['popularity']
+                    })
+
+                # Apply max_tracks cap if specified
+                if max_tracks and len(releases) > max_tracks:
+                    releases.sort(key=lambda x: x['popularity'], reverse=True)
+                    releases = releases[:max_tracks]
+
+                return releases
+            else:
+                if self.profiler:
+                    self.profiler.record_cache_miss()
+
         seen_isrcs: Set[str] = set()
         releases = []
 
         try:
-            # Get all album types
-            albums = self.sp.artist_albums(
-                artist_id,
-                album_type='album,single,compilation',
-                limit=50
-            )
+            # Get all album types with pagination and early stopping
+            with ProfilerContext(self.profiler, 'fetch_artist_albums') if self.profiler else DummyContext():
+                albums_response = self._call_api('artist_albums', self.sp.artist_albums,
+                    artist_id,
+                    album_type='album,single,compilation',
+                    limit=50
+                )
 
-            for album in albums['items']:
-                # Parse release date
+            albums_to_process = []
+            should_stop = False
+
+            # Process first page and check for early stopping
+            for album in albums_response['items']:
                 release_date = self._parse_release_date(album['release_date'])
                 if not release_date:
                     continue
 
-                # Check if within lookback window
+                # Albums are sorted by release_date DESC, so if we hit an old album, we can stop
                 if release_date < self.cutoff_date:
                     logger.debug(
-                        f"Skipping '{album['name']}' - released {release_date.date()} "
-                        f"(before cutoff {self.cutoff_date.date()})"
+                        f"Hit album '{album['name']}' before cutoff ({release_date.date()}). "
+                        f"Stopping pagination (smart filtering)."
                     )
-                    continue
+                    should_stop = True
+                    break
+
+                albums_to_process.append((album, release_date))
+
+            # Fetch remaining pages only if we haven't hit the cutoff
+            while albums_response['next'] and not should_stop:
+                try:
+                    albums_response = self._call_api('artist_albums_next', self.sp.next, albums_response)
+
+                    for album in albums_response['items']:
+                        release_date = self._parse_release_date(album['release_date'])
+                        if not release_date:
+                            continue
+
+                        if release_date < self.cutoff_date:
+                            logger.debug(
+                                f"Hit album '{album['name']}' before cutoff ({release_date.date()}). "
+                                f"Stopping pagination (smart filtering)."
+                            )
+                            should_stop = True
+                            break
+
+                        albums_to_process.append((album, release_date))
+
+                except Exception as e:
+                    logger.warning(f"Error fetching next page of albums for '{artist_name}': {e}")
+                    break
+
+            logger.debug(f"Processing {len(albums_to_process)} albums for '{artist_name}' after smart filtering")
+
+            # Now process the albums we collected
+            for album, release_date in albums_to_process:
 
                 # Check for noise in album title
                 if self._is_noise(album['name']):
@@ -404,7 +529,7 @@ class SpotifyReleaseTracker:
 
                 # Get tracks from album
                 album_id = album['id']
-                tracks_response = self.sp.album_tracks(album_id)
+                tracks_response = self._call_api('album_tracks', self.sp.album_tracks, album_id)
                 tracks = tracks_response['items']
 
                 for track in tracks:
@@ -418,7 +543,7 @@ class SpotifyReleaseTracker:
                     # Get ISRC for deduplication
                     # Need to fetch full track details for ISRC and popularity
                     try:
-                        full_track = self.sp.track(track['id'])
+                        full_track = self._call_api('track', self.sp.track, track['id'])
                         isrc = full_track.get('external_ids', {}).get('isrc')
                         popularity = full_track.get('popularity', 0)
 
@@ -459,7 +584,11 @@ class SpotifyReleaseTracker:
                             'album_type': album['album_type'],
                             'isrc': isrc or 'N/A',
                             'spotify_url': full_track['external_urls']['spotify'],
-                            'popularity': popularity
+                            'popularity': popularity,
+                            # Internal IDs for caching
+                            'artist_id': artist_id,
+                            'album_id': album_id,
+                            'track_id': track['id']
                         })
 
                     except Exception as e:
@@ -479,6 +608,32 @@ class SpotifyReleaseTracker:
             logger.info(
                 f"Found {len(releases)} unique recent releases for '{artist_name}'"
             )
+
+            # Cache the fetched releases if database is available
+            if self.db and releases:
+                logger.debug(f"Caching {len(releases)} releases for artist '{artist_name}'")
+                for release in releases:
+                    try:
+                        # Extract IDs from the release data
+                        # Note: We need to store artist_id, album_id, track_id which aren't in the final release dict
+                        # So we need to modify the release building code to include these IDs
+                        # For now, cache with what we have - we'll need to enhance this
+                        cache_data = {
+                            'artist_id': artist_id,
+                            'album_id': release.get('album_id', ''),  # We need to add this to releases
+                            'track_id': release.get('track_id', ''),  # We need to add this to releases
+                            'isrc': release['isrc'] if release['isrc'] != 'N/A' else None,
+                            'release_date': release['release_date'],
+                            'album_name': release['album'],
+                            'track_name': release['track'],
+                            'album_type': release['album_type'],
+                            'popularity': release['popularity'],
+                            'spotify_url': release['spotify_url']
+                        }
+                        self.db.cache_release(cache_data)
+                    except Exception as e:
+                        logger.warning(f"Failed to cache release '{release['track']}': {e}")
+
             return releases
 
         except Exception as e:
@@ -1152,6 +1307,12 @@ def cmd_track(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
         if output:
             print(output)
 
+    # Print profiler summary if enabled
+    if tracker.profiler:
+        tracker.profiler.finish()
+        print("\n", file=sys.stderr)
+        print(tracker.profiler.get_summary(), file=sys.stderr)
+
 
 def cmd_export(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
     """Handle export command."""
@@ -1419,6 +1580,16 @@ Examples:
         default=None,
         help='Cap number of tracks per artist (uses popularity ranking)'
     )
+    parser_track.add_argument(
+        '--profile',
+        action='store_true',
+        help='Enable performance profiling and show statistics'
+    )
+    parser_track.add_argument(
+        '--force-refresh',
+        action='store_true',
+        help='Bypass cache and fetch fresh data from API'
+    )
 
     # export command
     parser_export = subparsers.add_parser(
@@ -1530,9 +1701,28 @@ Examples:
         elif args.days:
             lookback_days = args.days
 
-    # Initialize tracker and database
-    tracker = SpotifyReleaseTracker(client_id, client_secret, lookback_days=lookback_days)
+    # Initialize database first
     db = ArtistDatabase('artists.db')
+
+    # Create profiler if --profile flag is set for track command
+    profiler = None
+    if args.command == 'track' and getattr(args, 'profile', False):
+        profiler = PerformanceStats()
+
+    # Get force_refresh flag for track command
+    force_refresh = False
+    if args.command == 'track':
+        force_refresh = getattr(args, 'force_refresh', False)
+
+    # Initialize tracker with database and options
+    tracker = SpotifyReleaseTracker(
+        client_id,
+        client_secret,
+        lookback_days=lookback_days,
+        profiler=profiler,
+        db=db,
+        force_refresh=force_refresh
+    )
 
     # Execute command
     if args.command == 'import-txt':
