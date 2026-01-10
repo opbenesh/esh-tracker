@@ -14,11 +14,6 @@ Track hundreds of artists, filter out the noise (re-releases, compilations), and
 pip install esh-tracker
 ```
 
-**Track your favorite playlist:**
-```bash
-esh-tracker track 37i9dQZF1DWWOaP4H0w5b0
-```
-
 **Track a single artist:**
 ```bash
 $ esh-tracker track --artist="Turnstile"
@@ -27,6 +22,17 @@ $ esh-tracker track --artist="Turnstile"
    Album: Dream Logic - Single
    Released: 2025-11-14
    Type: single
+   URL: https://open.spotify.com/...
+```
+
+**Track artists straight from your favorite playlist:**
+```bash
+esh-tracker track 37i9dQZF1DWWOaP4H0w5b0
+
+🎵 Agriculture - My Garden
+   Album: The Spiritual Sound
+   Released: 2025-10-03
+   Type: album
    URL: https://open.spotify.com/...
 ```
 
