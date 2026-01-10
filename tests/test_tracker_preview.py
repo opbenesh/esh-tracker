@@ -16,6 +16,8 @@ class TestTrackerPreview(unittest.TestCase):
         self.tracker.sp.search.return_value = {
             'artists': {'items': [{'id': 'artist_id', 'name': 'Test Artist'}]}
         }
+        # Mock artist response (for name canonicalization)
+        self.tracker.sp.artist.return_value = {'name': 'Test Artist'}
         
         # Mock releases response (mocking internal helper or API calls)
         # Since _process_artist calls _get_recent_releases which calls artist_albums...
@@ -91,6 +93,8 @@ class TestTrackerPreview(unittest.TestCase):
         self.tracker.sp.search.return_value = {
             'artists': {'items': [{'id': 'artist_id', 'name': 'Test Artist'}]}
         }
+        # Mock artist response (for name canonicalization)
+        self.tracker.sp.artist.return_value = {'name': 'Test Artist'}
         
         # We need to verify max_tracks is passed to _process_artist and then to _get_recent_releases
         with patch.object(self.tracker, '_get_recent_releases', return_value=[]) as mock_get_releases:

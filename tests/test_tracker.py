@@ -653,18 +653,18 @@ class TestOutputFormatters(unittest.TestCase):
         self.assertEqual(len(data['releases']), 1)
         self.assertEqual(data['meta']['total'], 1)
 
-    def test_format_releases_table(self):
-        """Test table (pretty) formatting."""
-        from artist_tracker.tracker import format_releases_table
+    def test_format_releases_pretty(self):
+        """Test pretty formatting."""
+        from artist_tracker.tracker import format_releases_pretty
         from unittest.mock import Mock
 
         # Mock tracker and db
         mock_tracker = Mock()
         mock_tracker.cutoff_date.date.return_value = '2024-03-01'
         mock_tracker.lookback_days = 90
-        # format_releases_table no longer takes db argument
+        # format_releases_pretty no longer takes db argument
 
-        output = format_releases_table(self.sample_releases, mock_tracker)
+        output = format_releases_pretty(self.sample_releases, mock_tracker)
         self.assertIn('SPOTIFY RECENT RELEASE TRACKER', output)
         self.assertIn('Test Artist - Test Track', output)
         self.assertIn('🎵', output)

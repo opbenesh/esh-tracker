@@ -105,7 +105,7 @@ python main.py track <playlist-id> --max-per-artist 3
 
 ## 🎯 Output Formats
 
-By default, the tool outputs a **human-readable table**. You can change this to TSV, JSON, or CSV for piping to other tools.
+By default, the tool outputs a **human-readable pretty format**. You can change this to TSV, JSON, or CSV for piping to other tools.
 
 ```bash
 # For piping
@@ -117,10 +117,10 @@ $ python main.py track <playlist-id> --format tsv
 
 | Format | Flag | Use Case |
 |--------|------|----------|
-| **Table** | `--format table` | Human-readable terminal output (default) |
-| **TSV**   | `--format tsv`   | Pipe-friendly tab-separated values |
-| **JSON**  | `--format json`  | Programmatic consumption |
-| **CSV**   | `--format csv`   | Spreadsheet import |
+| **Pretty** | `--format pretty` | Human-readable terminal output (default) |
+| **TSV**    | `--format tsv`    | Pipe-friendly tab-separated values |
+| **JSON**   | `--format json`   | Programmatic consumption |
+| **CSV**    | `--format csv`    | Spreadsheet import |
 
 ## 💡 Pro Tips
 
@@ -128,7 +128,7 @@ $ python main.py track <playlist-id> --format tsv
 
 Set up a cron job to email yourself daily (using TSV for clean output):
 ```bash
-0 9 * * * python main.py track <playlist-id> --days 1 --format table | mail -s "New Metal Releases" you@email.com
+0 9 * * * python main.py track <playlist-id> --days 1 --format pretty | mail -s "New Metal Releases" you@email.com
 ```
 
 ### Filter by Artist

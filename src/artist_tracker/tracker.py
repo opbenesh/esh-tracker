@@ -938,8 +938,8 @@ def format_releases_json(releases: List[Dict], meta: Dict) -> str:
     return json.dumps(output, indent=2, ensure_ascii=False)
 
 
-def format_releases_table(releases: List[Dict], tracker: SpotifyReleaseTracker) -> str:
-    """Format releases as pretty table (human-readable)."""
+def format_releases_pretty(releases: List[Dict], tracker: SpotifyReleaseTracker) -> str:
+    """Format releases as pretty text (human-readable)."""
     lines = []
     lines.append("=" * 80)
     lines.append("SPOTIFY RECENT RELEASE TRACKER")
@@ -997,8 +997,8 @@ def cmd_track(args, tracker: SpotifyReleaseTracker):
     output_format = getattr(args, 'format', 'tsv')
 
     # Print results based on format
-    if output_format == 'table':
-        output = format_releases_table(results['releases'], tracker)
+    if output_format == 'pretty':
+        output = format_releases_pretty(results['releases'], tracker)
         print("\n" + output)
 
     elif output_format == 'json':
@@ -1053,7 +1053,7 @@ Examples:
   python main.py track --artist="Megadeth"
 
   # With options
-  python main.py track 37i9dQZF1DXcBWIGoYBM5M --days 30 --format table
+  python main.py track 37i9dQZF1DXcBWIGoYBM5M --days 30 --format pretty
         """
     )
 
@@ -1085,9 +1085,9 @@ Examples:
 
     parser_track.add_argument(
         '--format', '-f',
-        choices=['tsv', 'json', 'csv', 'table'],
-        default='table', # Changed default to table for better UX as per user request (implied "simplify UX")
-        help='Output format: table (default), tsv, json, or csv'
+        choices=['tsv', 'json', 'csv', 'pretty'],
+        default='pretty', # Changed default to pretty for better UX as per user request
+        help='Output format: pretty (default), tsv, json, or csv'
     )
     parser_track.add_argument(
         '--days', '-d',
