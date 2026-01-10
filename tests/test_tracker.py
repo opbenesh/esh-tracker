@@ -588,6 +588,85 @@ class TestErrorHandling(unittest.TestCase):
         self.assertEqual(skipped, 0)
 
 
+class TestEarliestReleaseDate(unittest.TestCase):
+    """Test ISRC-based earliest release info lookup."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        with patch('artist_tracker.tracker.SpotifyClientCredentials'):
+            with patch('artist_tracker.tracker.spotipy.Spotify'):
+                self.tracker = SpotifyReleaseTracker(
+                    client_id='test_client_id',
+                    client_secret='test_client_secret'
+                )
+                self.tracker.sp = Mock()
+
+    def test_returns_earliest_date_and_album_from_multiple_releases(self):
+        """Test that earliest date and album are returned when track appears on multiple albums."""
+        # Mock ISRC search returning track on 3 different albums with different dates
+        self.tracker.sp.search.return_value = {
+            'tracks': {
+                'items': [
+                    {
+                        'name': 'Test Track',
+                        'album': {'name': 'Bundle Release', 'release_date': '2024-05-01'}
+                    },
+                    {
+                        'name': 'Test Track',
+                        'album': {'name': 'Second Single', 'release_date': '2024-03-15'}
+                    },
+                    {
+                        'name': 'Test Track',
+                        'album': {'name': 'Original Single', 'release_date': '2024-02-01'}  # Earliest
+                    }
+                ]
+            }
+        }
+
+        date, album = self.tracker._get_earliest_release_info('TEST123ISRC')
+
+        self.assertIsNotNone(date)
+        self.assertEqual(date.date(), datetime(2024, 2, 1).date())
+        self.assertEqual(album, 'Original Single')
+
+    def test_caches_results(self):
+        """Test that ISRC lookups are cached to avoid redundant API calls."""
+        self.tracker.sp.search.return_value = {
+            'tracks': {
+                'items': [
+                    {'name': 'Track', 'album': {'name': 'Album', 'release_date': '2024-05-01'}}
+                ]
+            }
+        }
+
+        # Call twice with same ISRC
+        self.tracker._get_earliest_release_info('CACHED_ISRC')
+        self.tracker._get_earliest_release_info('CACHED_ISRC')
+
+        # Should only call API once due to caching
+        self.assertEqual(self.tracker.sp.search.call_count, 1)
+
+    def test_returns_none_tuple_on_no_results(self):
+        """Test that (None, None) is returned when ISRC search finds no tracks."""
+        self.tracker.sp.search.return_value = {
+            'tracks': {'items': []}
+        }
+
+        date, album = self.tracker._get_earliest_release_info('UNKNOWN_ISRC')
+
+        self.assertIsNone(date)
+        self.assertIsNone(album)
+
+    def test_returns_none_tuple_on_api_error(self):
+        """Test that (None, None) is returned on API error (graceful fallback)."""
+        self.tracker.sp.search.side_effect = Exception('API Error')
+
+        date, album = self.tracker._get_earliest_release_info('ERROR_ISRC')
+
+        self.assertIsNone(date)
+        self.assertIsNone(album)
+
+
 class TestOutputFormatters(unittest.TestCase):
     """Test output formatting functions."""
 

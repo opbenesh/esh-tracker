@@ -300,6 +300,59 @@ class SpotifyReleaseTracker:
             logger.error(f"Error fetching artist ID '{artist_id}': {e}")
             return None
 
+    def _get_earliest_release_info(self, isrc: str) -> Tuple[Optional[datetime], Optional[str]]:
+        """
+        Find the earliest release date and album for a track by searching all instances via ISRC.
+
+        This handles the case where artists release singles incrementally (e.g., single1,
+        then single2 bundled with single1, etc.) - we want the original release info.
+
+        Args:
+            isrc: International Standard Recording Code for the track
+
+        Returns:
+            Tuple of (earliest_date, original_album_name), or (None, None) if search fails
+        """
+        # Check cache first (avoid redundant API calls within a session)
+        if not hasattr(self, '_isrc_info_cache'):
+            self._isrc_info_cache: Dict[str, Tuple[Optional[datetime], Optional[str]]] = {}
+
+        if isrc in self._isrc_info_cache:
+            return self._isrc_info_cache[isrc]
+
+        try:
+            # Search for all tracks with this ISRC
+            results = self.sp.search(q=f"isrc:{isrc}", type="track", limit=50)
+
+            earliest_date: Optional[datetime] = None
+            earliest_album_name: Optional[str] = None
+
+            for track in results.get('tracks', {}).get('items', []):
+                album = track.get('album', {})
+                release_date_str = album.get('release_date')
+
+                if release_date_str:
+                    release_date = self._parse_release_date(release_date_str)
+                    if release_date:
+                        if earliest_date is None or release_date < earliest_date:
+                            earliest_date = release_date
+                            earliest_album_name = album.get('name')
+
+            if earliest_date and earliest_album_name:
+                logger.debug(
+                    f"ISRC {isrc}: earliest release is '{earliest_album_name}' "
+                    f"on {earliest_date.strftime('%Y-%m-%d')}"
+                )
+
+            # Cache the result
+            self._isrc_info_cache[isrc] = (earliest_date, earliest_album_name)
+            return earliest_date, earliest_album_name
+
+        except Exception as e:
+            logger.warning(f"Error searching ISRC '{isrc}': {e}")
+            self._isrc_info_cache[isrc] = (None, None)
+            return None, None
+
     def _get_recent_releases(
         self,
         artist_id: str,
@@ -378,11 +431,31 @@ class SpotifyReleaseTracker:
                                 continue
                             seen_isrcs.add(isrc)
 
+                            # Find earliest release info via ISRC search
+                            earliest_date, original_album = self._get_earliest_release_info(isrc)
+                            if earliest_date:
+                                # Use earliest date, but still apply cutoff filter
+                                if earliest_date < self.cutoff_date:
+                                    logger.debug(
+                                        f"Skipping track '{track['name']}' - "
+                                        f"original release {earliest_date.date()} before cutoff"
+                                    )
+                                    continue
+                                track_release_date = earliest_date
+                                track_album_name = original_album or album['name']
+                            else:
+                                track_release_date = release_date
+                                track_album_name = album['name']
+                        else:
+                            # No ISRC, use album release date
+                            track_release_date = release_date
+                            track_album_name = album['name']
+
                         releases.append({
                             'artist': artist_name,
-                            'album': album['name'],
+                            'album': track_album_name,
                             'track': track['name'],
-                            'release_date': release_date.strftime('%Y-%m-%d'),
+                            'release_date': track_release_date.strftime('%Y-%m-%d'),
                             'album_type': album['album_type'],
                             'isrc': isrc or 'N/A',
                             'spotify_url': full_track['external_urls']['spotify'],
