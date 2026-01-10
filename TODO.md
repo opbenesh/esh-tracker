@@ -118,28 +118,6 @@
 
 ---
 
-### Phase 4: Database Query Optimization (Low-Medium Impact)
-**Status**: Not started
-**Priority**: Only if scaling issues arise
-
-**Problem**: Current database queries are simple but could be optimized for large datasets
-
-**Solution**:
-1. Add composite index on `artists(date_added, spotify_artist_id)` for common queries
-2. Use `SELECT` with specific columns instead of `SELECT *` where applicable
-3. Consider query result caching for frequently accessed data (e.g., `get_artist_count()`)
-
-**Expected Impact**:
-- Marginal improvement for small databases (<10k artists)
-- Noticeable improvement for large databases (>10k artists)
-
-**Tasks**:
-- [ ] Profile database queries with large dataset
-- [ ] Add composite indexes where beneficial
-- [ ] Optimize SELECT queries
-- [ ] Implement query result caching
-
----
 
 ### Phase 5: Concurrency Tuning (Low Impact)
 **Status**: Not started

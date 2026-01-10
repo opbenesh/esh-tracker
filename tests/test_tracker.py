@@ -236,7 +236,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
                 'id': track_id,
                 'name': 'Great Song',
                 'external_ids': {'isrc': 'USABC1234567'},  # Same ISRC
-                'external_urls': {'spotify': f'https://open.spotify.com/track/{track_id}'}
+                'external_urls': {'spotify': f'https://open.spotify.com/track/{track_id}'},
+                'artists': [{'id': 'artist123', 'name': 'Test Artist'}]
             }
 
         tracker.sp.track.side_effect = mock_track
@@ -301,7 +302,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
                 'id': track_id,
                 'name': f'Track {track_id}',
                 'external_ids': {'isrc': f'ISRC{track_id}'},
-                'external_urls': {'spotify': f'https://open.spotify.com/track/{track_id}'}
+                'external_urls': {'spotify': f'https://open.spotify.com/track/{track_id}'},
+                'artists': [{'id': 'artist123', 'name': 'Test Artist'}]
             }
 
         tracker.sp.track.side_effect = mock_track
@@ -314,64 +316,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
         self.assertEqual(len(releases), 1)
         self.assertEqual(releases[0]['album'], 'Recent Album')
 
-    def test_track_artists_missing_file(self):
-        """Test handling of missing artists file."""
-        results = self.tracker.track_artists('nonexistent_file.txt')
-        self.assertIn('error', results)
-
-    @patch('builtins.open', new_callable=mock_open, read_data='Taylor Swift\nspotify:artist:123\n# Comment\n')
-    @patch('artist_tracker.tracker.as_completed')
-    @patch('artist_tracker.tracker.ThreadPoolExecutor')
-    def test_track_artists_integration(self, mock_executor, mock_as_completed, mock_file):
-        """Integration test for tracking multiple artists."""
-        # Create proper mock futures
-        futures = []
-        
-        def mock_submit(fn, arg):
-            mock_future = Mock()
-            mock_future._result = fn(arg)
-            mock_future.result.return_value = mock_future._result
-            futures.append((mock_future, arg))
-            return mock_future
-
-        mock_executor_instance = Mock()
-        mock_executor_instance.__enter__ = Mock(return_value=mock_executor_instance)
-        mock_executor_instance.__exit__ = Mock(return_value=None)
-        mock_executor_instance.submit.side_effect = mock_submit
-        mock_executor.return_value = mock_executor_instance
-
-        # Mock as_completed to just iterate over the futures
-        def mock_as_completed_impl(future_dict):
-            return iter(future_dict.keys())
-        mock_as_completed.side_effect = mock_as_completed_impl
-
-        # Mock the process_artist method
-        def mock_process_artist(artist_input):
-            if 'Taylor Swift' in artist_input:
-                return ('Taylor Swift', [
-                    {
-                        'artist': 'Taylor Swift',
-                        'album': 'Test Album',
-                        'track': 'Test Track',
-                        'release_date': '2024-05-15',
-                        'album_type': 'album',
-                        'isrc': 'TEST123',
-                        'spotify_url': 'https://spotify.com/track/1'
-                    }
-                ])
-            return (None, [])
-
-        self.tracker._process_artist = mock_process_artist
-
-        results = self.tracker.track_artists('artists.txt')
-
-        self.assertIn('releases', results)
-        self.assertIn('total_releases', results)
-        self.assertIn('missing_artists', results)
-        self.assertEqual(results['total_releases'], 1)
-
-    def test_import_from_playlist_success(self):
-        """Test successful playlist import."""
+    def test_track_from_playlists_success(self):
+        """Test successful playlist import/track."""
         # Mock playlist tracks
         self.tracker.sp.playlist_tracks.return_value = {
             'items': [
@@ -387,18 +333,18 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
             'next': None
         }
 
-        # Mock database batch add
-        mock_db = Mock()
-        mock_db.add_artists_batch.return_value = (2, 0)
+        # Mock _track_artists_common to avoid threading logic in this unit test
+        with patch.object(self.tracker, '_track_artists_common') as mock_common:
+            mock_common.return_value = {}
 
-        added, skipped = self.tracker.import_from_playlist('playlist123', mock_db)
+            self.tracker.track_from_playlists(['playlist123'])
 
-        self.assertEqual(added, 2)
-        self.assertEqual(skipped, 0)
-        self.tracker.sp.playlist_tracks.assert_called_once_with('playlist123')
-        mock_db.add_artists_batch.assert_called_once()
+            self.tracker.sp.playlist_tracks.assert_called_once_with('playlist123')
+            mock_common.assert_called_once()
+            args, _ = mock_common.call_args
+            self.assertEqual(len(args[0]), 2) # 2 artists
 
-    def test_import_from_playlist_pagination(self):
+    def test_track_from_playlists_pagination(self):
         """Test playlist import with pagination."""
         # Mock first page
         self.tracker.sp.playlist_tracks.return_value = {
@@ -424,15 +370,17 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
             'next': None
         }
 
-        mock_db = Mock()
-        mock_db.add_artists_batch.return_value = (2, 0)
+        # Mock _track_artists_common
+        with patch.object(self.tracker, '_track_artists_common') as mock_common:
+            mock_common.return_value = {}
 
-        added, skipped = self.tracker.import_from_playlist('playlist123', mock_db)
+            self.tracker.track_from_playlists(['playlist123'])
 
-        self.assertEqual(added, 2)
-        self.tracker.sp.playlist_tracks.assert_called_once()
-        self.tracker.sp.next.assert_called_once()
-        mock_db.add_artists_batch.assert_called_once()
+            self.tracker.sp.playlist_tracks.assert_called_once()
+            self.tracker.sp.next.assert_called_once()
+            mock_common.assert_called_once()
+            args, _ = mock_common.call_args
+            self.assertEqual(len(args[0]), 2)
 
 
 class TestDateBoundaries(unittest.TestCase):
@@ -579,16 +527,6 @@ class TestErrorHandling(unittest.TestCase):
         
         self.assertEqual(result, [])
 
-    def test_import_from_playlist_returns_zero_on_error(self):
-        """Test that import_from_playlist returns (0, 0) on error."""
-        self.tracker.sp.playlist_tracks.side_effect = Exception('Playlist Error')
-
-        mock_db = Mock()
-        added, skipped = self.tracker.import_from_playlist('invalid_id', mock_db)
-
-        self.assertEqual(added, 0)
-        self.assertEqual(skipped, 0)
-
 
 class TestEarliestReleaseDate(unittest.TestCase):
     """Test ISRC-based earliest release info lookup."""
@@ -724,10 +662,9 @@ class TestOutputFormatters(unittest.TestCase):
         mock_tracker = Mock()
         mock_tracker.cutoff_date.date.return_value = '2024-03-01'
         mock_tracker.lookback_days = 90
-        mock_db = Mock()
-        mock_db.get_artist_count.return_value = 5
+        # format_releases_table no longer takes db argument
 
-        output = format_releases_table(self.sample_releases, mock_tracker, mock_db)
+        output = format_releases_table(self.sample_releases, mock_tracker)
         self.assertIn('SPOTIFY RECENT RELEASE TRACKER', output)
         self.assertIn('Test Artist - Test Track', output)
         self.assertIn('🎵', output)
@@ -805,7 +742,8 @@ class TestMaxPerArtist(unittest.TestCase):
                 'name': f'Track {track_num}',
                 'external_ids': {'isrc': f'ISRC{track_num}'},
                 'external_urls': {'spotify': f'https://spotify.com/track/{track_id}'},
-                'popularity': 100 - (track_num * 10)  # Track 0 = 100, Track 4 = 60
+                'popularity': 100 - (track_num * 10),  # Track 0 = 100, Track 4 = 60
+                'artists': [{'id': 'artist123', 'name': 'Test Artist'}]
             }
 
         tracker.sp.track.side_effect = mock_track
@@ -888,7 +826,8 @@ class TestSmartFilteringWithGroupedAlbums(unittest.TestCase):
                 'name': f'Track {track_id}',
                 'external_ids': {'isrc': f'ISRC{track_id}'},
                 'external_urls': {'spotify': f'https://spotify.com/track/{track_id}'},
-                'popularity': 50
+                'popularity': 50,
+                'artists': [{'id': 'artist123', 'name': 'Megadeth'}]
             }
 
         tracker.sp.track.side_effect = mock_track

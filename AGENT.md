@@ -23,8 +23,9 @@
 - **Entry Point**: `main.py` parses CLI args and dispatches commands.
 
 ### Key Workflows
-1. **Tracking** (`track` command): Fetches recent albums for all artists in DB. Filters by 90-day window. Deduplicates using ISRC and exact name/date matching.
-2. **Importing**: Can import from text files or Spotify playlists. Playlist import fetches *all* artists on the playlist.
+1. **Playlist-First Tracking** (`track` command): User points to a playlist (or multiple), app fetches artists, then checks for recent releases. This is the main workflow.
+2. **Liked Songs Tracking** (`track --liked`): Tracks releases from artists in the user's "Liked Songs" library.
+3. **Caching**: SQLite database (`artists.db`) is used behind the scenes to cache release data and ISRC lookups to minimize API calls, but explicit artist management (importing to DB) has been removed to simplify UX.
 
 ### Common Pitfalls & Knowledge
 - **Spotipy & Markets**: `sp.artist_albums` requires `country` parameter (e.g., 'US'). Other endpoints like `sp.track` use `market`. Mixing them up returns 404s or empty lists.
@@ -54,8 +55,17 @@
 # Install dependencies first
 pip install -r requirements.txt
 
-# Run the tracker
-python main.py [command]
+# Run the tracker (Playlist-First Flow)
+python main.py track <playlist-id>
+
+# Track from multiple playlists
+python main.py track <playlist-1> <playlist-2>
+
+# Track from "Liked Songs"
+python main.py track --liked
+
+# Demo single artist
+python main.py track --artist="Megadeth"
 ```
 
 ## Testing
