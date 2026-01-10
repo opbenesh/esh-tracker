@@ -32,14 +32,32 @@ from .exceptions import (
 
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('app.log'),
-        logging.StreamHandler()
-    ]
-)
+def setup_logging(verbose: bool = False):
+    """
+    Configure logging settings.
+    
+    Args:
+        verbose: If True, show INFO logs on console. Otherwise show WARNING+.
+    """
+    # Create root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    
+    # Clear any existing handlers
+    root_logger.handlers = []
+    
+    # File handler - always logs INFO
+    file_handler = logging.FileHandler('app.log')
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    root_logger.addHandler(file_handler)
+    
+    # Console handler - logs WARNING by default, INFO if verbose
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO if verbose else logging.WARNING)
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    root_logger.addHandler(console_handler)
+
 logger = logging.getLogger(__name__)
 
 
@@ -397,7 +415,8 @@ class SpotifyReleaseTracker:
 
     def _process_artist(
         self,
-        artist_input: str
+        artist_input: str,
+        max_tracks: Optional[int] = None
     ) -> Tuple[Optional[str], List[Dict]]:
         """
         Process a single artist input.
@@ -427,7 +446,7 @@ class SpotifyReleaseTracker:
                 return None, []
 
         # Get recent releases
-        releases = self._get_recent_releases(artist_id, artist_name)
+        releases = self._get_recent_releases(artist_id, artist_name, max_tracks)
         return artist_name, releases
 
     def import_from_txt(
@@ -770,12 +789,58 @@ class SpotifyReleaseTracker:
                 'artists_in_playlist': len(artists_dict)
             }
 
+
         except Exception as e:
             logger.error(f"Error in one-time playlist session: {e}")
             return {
                 'releases': [],
                 'total_releases': 0,
                 'artists_processed': 0,
+                'error': str(e)
+            }
+
+    def track_artist_onetime(
+        self,
+        artist_input: str,
+        max_tracks: Optional[int] = None
+    ) -> Dict:
+        """
+        One-time session: Track releases for a specific artist without persisting to DB.
+
+        Args:
+            artist_input: Artist name or Spotify ID
+            max_tracks: Optional cap on number of tracks to return
+
+        Returns:
+            Dictionary with results and statistics
+        """
+        logger.info(f"One-time session: tracking releases for artist input '{artist_input}'...")
+
+        try:
+            artist_name, releases = self._process_artist(artist_input, max_tracks)
+
+            if not artist_name:
+                return {
+                    'releases': [],
+                    'total_releases': 0,
+                    'error': f"Artist '{artist_input}' not found"
+                }
+
+            # Sort releases by date (newest first)
+            releases.sort(key=lambda x: x['release_date'], reverse=True)
+
+            return {
+                'releases': releases,
+                'total_releases': len(releases),
+                'artist_name': artist_name,
+                'artist_tracked': True
+            }
+
+        except Exception as e:
+            logger.error(f"Error in one-time artist session: {e}")
+            return {
+                'releases': [],
+                'total_releases': 0,
                 'error': str(e)
             }
 
@@ -842,10 +907,7 @@ def format_releases_table(releases: List[Dict], tracker: SpotifyReleaseTracker, 
             lines.append(f"🎵 {release['artist']} - {release['track']}")
             lines.append(f"   Album: {release['album']} ({release['album_type']})")
             lines.append(f"   Released: {release['release_date']}")
-            lines.append(f"   ISRC: {release['isrc']}")
             lines.append(f"   URL: {release['spotify_url']}")
-            if release.get('popularity'):
-                lines.append(f"   Popularity: {release['popularity']}")
             lines.append("")
     else:
         lines.append("No recent releases found.")
@@ -952,11 +1014,28 @@ def cmd_list(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
 
 def cmd_track(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
     """Handle track command."""
-    logger.info("Starting artist tracking from database...")
+    # Handle single artist preview (bypass DB)
+    preview_artist = getattr(args, 'preview_artist', None)
+    if preview_artist:
+        # Get max_per_artist if specified
+        max_per_artist = getattr(args, 'max_per_artist', None)
+        results = tracker.track_artist_onetime(preview_artist, max_per_artist)
+        
+        # Add metadata for output formatters
+        if 'error' not in results:
+            results['artists_processed'] = 1 if results.get('artist_tracked') else 0
+            results['missing_artists'] = []
+            results['total_releases'] = len(results['releases'])
+        else:
+             print(f"❌ Error: {results['error']}")
+             return
+    
+    else:
+        logger.info("Starting artist tracking from database...")
 
-    # Get max_per_artist if specified
-    max_per_artist = getattr(args, 'max_per_artist', None)
-    results = tracker.track_artists_from_db(db, max_per_artist=max_per_artist)
+        # Get max_per_artist if specified
+        max_per_artist = getattr(args, 'max_per_artist', None)
+        results = tracker.track_artists_from_db(db, max_per_artist=max_per_artist)
 
     # Determine output format
     output_format = getattr(args, 'format', 'tsv')
@@ -1147,11 +1226,9 @@ def cmd_preview(args, tracker: SpotifyReleaseTracker):
         # Print releases
         if results['releases']:
             for release in results['releases']:
-                popularity_str = f" (pop: {release.get('popularity', 'N/A')})"
-                print(f"🎵 {release['artist']} - {release['track']}{popularity_str}")
+                print(f"🎵 {release['artist']} - {release['track']}")
                 print(f"   Album: {release['album']} ({release['album_type']})")
                 print(f"   Released: {release['release_date']}")
-                print(f"   ISRC: {release['isrc']}")
                 print(f"   URL: {release['spotify_url']}")
                 print()
         else:
@@ -1246,6 +1323,12 @@ Examples:
         help='Use table format for human readability (legacy, use --format table instead)'
     )
     parser_track.add_argument(
+        '--preview-artist', '--artist',
+        dest='preview_artist',
+        default=None,
+        help='Preview releases for a single artist without adding to database'
+    )
+    parser_track.add_argument(
         '--days', '-d',
         type=int,
         default=None,
@@ -1334,7 +1417,16 @@ Examples:
         help='Cap number of tracks per artist (uses popularity ranking)'
     )
 
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='Enable verbose logging to console'
+    )
+
     args = parser.parse_args()
+
+    # Setup logging
+    setup_logging(args.verbose)
 
     # Default to 'track' command if none specified
     if not args.command:
