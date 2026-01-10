@@ -641,6 +641,14 @@ class TestOutputFormatters(unittest.TestCase):
         self.assertIn('date,artist,track', output)  # Header
         self.assertIn('2024-05-15,Test Artist,Test Track', output)
 
+    def test_format_releases_ids(self):
+        """Test IDs formatting."""
+        from artist_tracker.tracker import format_releases_ids
+        # Sample releases needs 'track_id' which was missing in setUp
+        self.sample_releases[0]['track_id'] = '12345'
+        output = format_releases_ids(self.sample_releases)
+        self.assertEqual(output.strip(), 'spotify:track:12345')
+
     def test_format_releases_json(self):
         """Test JSON formatting."""
         from artist_tracker.tracker import format_releases_json
