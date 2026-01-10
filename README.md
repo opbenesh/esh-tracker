@@ -20,11 +20,11 @@ $ python main.py track --artist "Megadeth"
 ================================================================================
 SPOTIFY RECENT RELEASE TRACKER
 ================================================================================
-Tracking 1 artists | Releases since 2025-10-12 (90 days)
+Tracking 1 artists | Releases since 2025-10-20 (90 days)
 
 🎵 Megadeth - Let There Be Shred
    Album: Megadeth (album)
-   Released: 2025-12-12
+   Released: 2025-12-19
    URL: https://open.spotify.com/album/5xB...
 ```
 
@@ -113,7 +113,7 @@ By default, the tool outputs a **human-readable pretty format**. You can change 
 ```bash
 # For piping
 $ python main.py track <playlist-id> --format tsv
-2026-01-15	Converge	Permanent Blue	The Dusk In Us	album	USDY41700501	https://...
+2017-11-03	Converge	Permanent Blue	The Dusk In Us	album	USDY41700501	https://...
 ```
 
 **Other formats**:
