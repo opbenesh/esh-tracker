@@ -123,6 +123,12 @@ When maintaining the README, follow these principles:
 
 ## Performance Notes
 
+**Performance Metric**: We quantify application performance using a simple, objective metric:
+- **# of Spotify API calls performed during the run**
+- This is the primary performance indicator for all optimization work
+- All benchmarks and performance discussions should reference this metric
+- The profiler (`--profile` flag) tracks and reports API call counts by operation type
+
 **Key Insight**: Spotify releases are **read-only** data - once published, they don't change. This makes them ideal for aggressive caching strategies.
 
 **Current Bottlenecks**:
