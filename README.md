@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="Esh Tracker" width="100%"/>
+  <img src="assets/banner.png" alt="Esh Tracker" width="100%"/>
 </div>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
