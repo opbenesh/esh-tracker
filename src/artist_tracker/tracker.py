@@ -676,6 +676,14 @@ class SpotifyReleaseTracker:
             if not artist_id:
                 return artist_name, []  # Return name for missing artists tracking
 
+            # Update artist_name to the official one from Spotify to fix capitalization
+            # We already did a search, so ideally we'd get the name from that result,
+            # but _search_artist only returns the ID.
+            # Let's fetch the official name using the ID.
+            official_name = self._get_artist_name(artist_id)
+            if official_name:
+                artist_name = official_name
+
         # Get artist name if we have an ID
         if artist_id and not artist_name:
             artist_name = self._get_artist_name(artist_id)
