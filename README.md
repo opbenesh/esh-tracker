@@ -10,38 +10,41 @@ This CLI tool watches your favorite Spotify artists and shows you their recent r
 
 ## ⚡ Quick Example
 
-Here's what a typical session looks like:
+### 1. Easy Use: Check One Artist
+
+Want to quickly check if a band has something new?
 
 ```bash
-# Check what's new from artists in a playlist (default: last 90 days)
-$ python main.py track 37i9dQZF1DWWOaP4H0w5b0
+$ python main.py track --artist "Megadeth"
 
 ================================================================================
 SPOTIFY RECENT RELEASE TRACKER
 ================================================================================
-Tracking 47 artists | Releases since 2025-10-11 (90 days)
+Tracking 1 artists | Releases since 2025-10-12 (90 days)
 
-🎵 Converge - Permanent Blue
-   Album: The Dusk In Us (album)
-   Released: 2025-12-18
-   URL: https://open.spotify.com/track/5Z8K...
-
-🎵 Meshuggah - Nostrum
-   Album: Immutable (album)
-   Released: 2026-01-03
-   URL: https://open.spotify.com/track/3hB9...
-
-🎵 Dillinger Escape Plan - Farewell, Mona Lisa
-   Album: Option Paralysis (album)
-   Released: 2025-11-22
-   URL: https://open.spotify.com/track/7xYg...
-
-================================================================================
-Total releases: 3
-================================================================================
+🎵 Megadeth - Let There Be Shred
+   Album: Megadeth (album)
+   Released: 2025-12-12
+   URL: https://open.spotify.com/album/5xB...
 ```
 
-That's it! You just discovered 3 new albums you might have missed.
+### 2. Track from a Playlist (Recommended)
+
+Keep all your favorite artists in one Spotify playlist. This is the most powerful way to use the tracker!
+
+```bash
+$ python main.py track 37i9dQZF1DWWOaP4H0w5b0
+```
+
+**Why this is useful**: You can manage who you follow directly in Spotify. Add an artist's song to your "Tracker" playlist, and they are automatically tracked. Remove the song to stop tracking.
+
+### 3. Track Your Liked Songs
+
+If you use your "Liked Songs" library as your main collection:
+
+```bash
+$ python main.py track --liked
+```
 
 ## 🚀 Installation
 
