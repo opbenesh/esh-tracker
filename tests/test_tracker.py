@@ -209,7 +209,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
                     'album_type': 'album',
                     'external_urls': {'spotify': 'https://open.spotify.com/album/2'}
                 }
-            ]
+            ],
+            'next': None
         }
 
         # Mock album tracks - same song on both releases
@@ -280,7 +281,8 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
                     'release_date': '2024-05-20',
                     'album_type': 'album',
                 }
-            ]
+            ],
+            'next': None
         }
 
         # Mock album tracks
@@ -784,7 +786,8 @@ class TestMaxPerArtist(unittest.TestCase):
                     'release_date': '2024-05-15',
                     'album_type': 'album'
                 }
-            ]
+            ],
+            'next': None
         }
 
         # Mock album with 5 tracks
@@ -814,6 +817,96 @@ class TestMaxPerArtist(unittest.TestCase):
         self.assertEqual(len(releases), 2)
         self.assertEqual(releases[0]['popularity'], 100)  # Most popular
         self.assertEqual(releases[1]['popularity'], 90)   # Second most popular
+
+
+class TestSmartFilteringWithGroupedAlbums(unittest.TestCase):
+    """Test smart filtering when Spotify groups albums by type (albums, singles, compilations)."""
+
+    @patch('artist_tracker.tracker.datetime')
+    def test_finds_recent_singles_despite_old_albums_first(self, mock_datetime):
+        """
+        Regression test for bug where smart filtering stopped too early.
+
+        Spotify returns albums grouped by type (albums, then singles, then compilations),
+        NOT chronologically. If an old album appears first, smart filtering should NOT
+        stop pagination because recent singles may appear later in the response.
+
+        Reproduces the Megadeth scenario:
+        - Old album "The Sick, The Dying… And The Dead!" (2022-09-02) appears first
+        - Recent singles from 2025 appear later in the list
+        - Smart filtering was incorrectly stopping at the old album
+        """
+        # Fixed current date: 2026-01-10
+        mock_datetime.now.return_value = datetime(2026, 1, 10)
+        mock_datetime.strptime = datetime.strptime
+
+        tracker = SpotifyReleaseTracker('test_id', 'test_secret', lookback_days=365)
+        tracker.sp = Mock()
+
+        # Mock albums in Spotify's grouped order: old albums first, recent singles later
+        tracker.sp.artist_albums.return_value = {
+            'items': [
+                # Old album appears first (grouped by type: albums)
+                {
+                    'id': 'old_album',
+                    'name': 'The Sick, The Dying… And The Dead!',
+                    'release_date': '2022-09-02',  # Before cutoff
+                    'album_type': 'album'
+                },
+                # Recent singles appear later in the list
+                {
+                    'id': 'single1',
+                    'name': 'Let There Be Shred',
+                    'release_date': '2025-12-19',  # After cutoff
+                    'album_type': 'single'
+                },
+                {
+                    'id': 'single2',
+                    'name': 'I Don\'t Care',
+                    'release_date': '2025-11-14',  # After cutoff
+                    'album_type': 'single'
+                }
+            ],
+            'next': None
+        }
+
+        # Mock album tracks
+        def mock_album_tracks(album_id):
+            return {
+                'items': [
+                    {'id': f'{album_id}_track1', 'name': f'Track from {album_id}'}
+                ]
+            }
+
+        tracker.sp.album_tracks.side_effect = mock_album_tracks
+
+        # Mock track details
+        def mock_track(track_id):
+            # Assign different ISRCs to avoid deduplication
+            return {
+                'id': track_id,
+                'name': f'Track {track_id}',
+                'external_ids': {'isrc': f'ISRC{track_id}'},
+                'external_urls': {'spotify': f'https://spotify.com/track/{track_id}'},
+                'popularity': 50
+            }
+
+        tracker.sp.track.side_effect = mock_track
+
+        # Mock ISRC search to return empty results (no earlier releases found)
+        tracker.sp.search.return_value = {'tracks': {'items': []}}
+
+        # Get releases - should find the 2 recent singles despite old album appearing first
+        releases = tracker._get_recent_releases('artist123', 'Megadeth')
+
+        # Should get 2 releases from the recent singles, NOT 0
+        self.assertEqual(len(releases), 2,
+            "Smart filtering should not stop at old albums when recent singles appear later")
+
+        # Verify we got the recent singles
+        release_albums = [r['album'] for r in releases]
+        self.assertIn('Let There Be Shred', release_albums)
+        self.assertIn('I Don\'t Care', release_albums)
 
 
 if __name__ == '__main__':

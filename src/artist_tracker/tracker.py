@@ -472,27 +472,20 @@ class SpotifyReleaseTracker:
                 )
 
             albums_to_process = []
-            should_stop = False
-
-            # Process first page and check for early stopping
+            # Process first page - collect albums within cutoff date
             for album in albums_response['items']:
                 release_date = self._parse_release_date(album['release_date'])
                 if not release_date:
                     continue
 
-                # Albums are sorted by release_date DESC, so if we hit an old album, we can stop
-                if release_date < self.cutoff_date:
-                    logger.debug(
-                        f"Hit album '{album['name']}' before cutoff ({release_date.date()}). "
-                        f"Stopping pagination (smart filtering)."
-                    )
-                    should_stop = True
-                    break
+                # Skip old albums, but DON'T stop pagination
+                # Note: Spotify groups albums by type (albums, singles, compilations),
+                # NOT by date, so we must continue checking all pages
+                if release_date >= self.cutoff_date:
+                    albums_to_process.append((album, release_date))
 
-                albums_to_process.append((album, release_date))
-
-            # Fetch remaining pages only if we haven't hit the cutoff
-            while albums_response['next'] and not should_stop:
+            # Fetch remaining pages
+            while albums_response['next']:
                 try:
                     albums_response = self._call_api('artist_albums_next', self.sp.next, albums_response)
 
@@ -501,21 +494,15 @@ class SpotifyReleaseTracker:
                         if not release_date:
                             continue
 
-                        if release_date < self.cutoff_date:
-                            logger.debug(
-                                f"Hit album '{album['name']}' before cutoff ({release_date.date()}). "
-                                f"Stopping pagination (smart filtering)."
-                            )
-                            should_stop = True
-                            break
-
-                        albums_to_process.append((album, release_date))
+                        # Skip old albums, but continue pagination
+                        if release_date >= self.cutoff_date:
+                            albums_to_process.append((album, release_date))
 
                 except Exception as e:
                     logger.warning(f"Error fetching next page of albums for '{artist_name}': {e}")
                     break
 
-            logger.debug(f"Processing {len(albums_to_process)} albums for '{artist_name}' after smart filtering")
+            logger.debug(f"Processing {len(albums_to_process)} albums for '{artist_name}'")
 
             # Now process the albums we collected
             for album, release_date in albums_to_process:
