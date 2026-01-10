@@ -7,6 +7,10 @@ Provides centralized configuration with environment variable support.
 import os
 from dataclasses import dataclass, field
 from typing import List
+from dotenv import load_dotenv
+
+# Load environment variables from .env file immediately
+load_dotenv()
 
 
 @dataclass

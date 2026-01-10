@@ -1,4 +1,7 @@
-# 📡 Esh Tracker
+<div align="center">
+  <img src="assets/logo.png" alt="Esh Tracker Logo" width="200"/>
+  <h1>📡 Esh Tracker</h1>
+</div>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Agent Built](https://img.shields.io/badge/Built%20By-Agent-blueviolet)](AGENTS.md)
