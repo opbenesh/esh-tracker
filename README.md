@@ -1,7 +1,7 @@
 # 📡 Esh Tracker
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Agent Built](https://img.shields.io/badge/Built%20By-Agent-blueviolet)](AGENT.md)
+[![Agent Built](https://img.shields.io/badge/Built%20By-Agent-blueviolet)](AGENTS.md)
 
 **Your personal radar for new Spotify releases.**
 Track hundreds of artists, filter out the noise (re-releases, compilations), and never miss a drop.
