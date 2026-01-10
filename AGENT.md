@@ -2,6 +2,13 @@
 
 ## Important Guidelines
 - **IMPORTANT**: Use a TDD approach to solving problems. *Do not assume* that your solution is correct. Instead, *validate your solution is correct* by first creating a test case and running the test case to _prove_ the solution is working as intended.
+- **CRITICAL - Bug Fix Workflow**: Whenever you discover a bug, follow this mandatory process:
+  1. **Add a test case** that reproduces the bug
+  2. **Run the test** and verify it fails (proving the bug exists)
+  3. **Fix the bug** in the source code
+  4. **Run the test again** and verify it passes (proving the fix works)
+  5. **Run all tests** to ensure no regressions were introduced
+  This ensures bugs stay fixed and prevents regression.
 - Assume your world knowledge is out of date. Use your web search tool to find up-to-date docs and information.
 - When testing APIs, remember to test both mocks and live APIs.
 - **IMPORTANT**: Whenever you discover something that you didn't know about this environment, about referenced APIs or used tools, append it to `agent.md`.
@@ -170,6 +177,10 @@ python main.py track --force-refresh --profile
 
 ### Discoveries
 - ISRC lookups were being repeated on every session despite being immutable
-- Spotify returns albums sorted by release_date DESC, enabling early pagination stopping
+- **CRITICAL BUG FIXED (2026-01-10)**: Spotify does NOT return albums sorted chronologically
+  - Albums are grouped by type: albums → singles → compilations
+  - Early pagination stopping based on date caused missing recent singles that appeared after old albums
+  - Fixed by continuing pagination through all pages while filtering individual albums by date
+  - Regression test added: `TestSmartFilteringWithGroupedAlbums.test_finds_recent_singles_despite_old_albums_first`
 - Most artists have <50 albums, but prolific artists benefit significantly from pagination optimization
 - Release data caching provides the biggest performance win (80-90% API reduction)
