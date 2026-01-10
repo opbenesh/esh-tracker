@@ -615,13 +615,10 @@ class SpotifyReleaseTracker:
                 for release in releases:
                     try:
                         # Extract IDs from the release data
-                        # Note: We need to store artist_id, album_id, track_id which aren't in the final release dict
-                        # So we need to modify the release building code to include these IDs
-                        # For now, cache with what we have - we'll need to enhance this
                         cache_data = {
                             'artist_id': artist_id,
-                            'album_id': release.get('album_id', ''),  # We need to add this to releases
-                            'track_id': release.get('track_id', ''),  # We need to add this to releases
+                            'album_id': release['album_id'],
+                            'track_id': release['track_id'],
                             'isrc': release['isrc'] if release['isrc'] != 'N/A' else None,
                             'release_date': release['release_date'],
                             'album_name': release['album'],
