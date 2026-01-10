@@ -7,9 +7,16 @@ Ensures reproducible performance measurements across machines and time by:
 2. Using fixed cutoff dates in the past (immutable release data)
 3. Measuring API calls as primary metric (network-independent)
 4. Testing both cold cache (fresh DB) and hot cache (warm DB) scenarios
+5. Using cassette recording to minimize actual Spotify API calls
 
 Usage:
+    # Standard mode (uses cassettes, no API calls)
     python benchmarks/benchmark.py --suite small
+
+    # Record mode (makes real API calls, updates cassettes)
+    BENCHMARK_RECORD=1 python benchmarks/benchmark.py --suite small
+
+    # Save results
     python benchmarks/benchmark.py --suite all --output results/benchmark_$(date +%Y%m%d_%H%M%S).json
 """
 
@@ -20,24 +27,31 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import re
 
 
 class BenchmarkRunner:
     """Manages benchmark execution and result collection"""
 
-    def __init__(self, project_root: Path):
+    def __init__(self, project_root: Path, use_cassettes: bool = True):
         self.project_root = project_root
         self.fixtures_dir = project_root / "benchmarks" / "fixtures"
         self.results_dir = project_root / "benchmarks" / "results"
+        self.cassettes_dir = project_root / "benchmarks" / "cassettes"
         self.db_path = project_root / "artists.db"
         self.main_script = project_root / "main.py"
+        self.use_cassettes = use_cassettes
 
-        # Ensure results directory exists
+        # Ensure directories exist
         self.results_dir.mkdir(parents=True, exist_ok=True)
+        if use_cassettes:
+            self.cassettes_dir.mkdir(parents=True, exist_ok=True)
+
+        # Add src to path for imports
+        sys.path.insert(0, str(project_root / "src"))
 
     def load_fixture(self, fixture_name: str) -> Dict[str, Any]:
         """Load artist fixture from JSON file"""
@@ -189,6 +203,93 @@ class BenchmarkRunner:
 
         return metrics
 
+    def run_track_with_cassette(self, cassette_name: str, cutoff_date: str,
+                                artist_ids: List[str]) -> Dict[str, Any]:
+        """
+        Run track command directly using tracker API with cassette support
+
+        Args:
+            cassette_name: Name for cassette file
+            cutoff_date: Cutoff date string (YYYY-MM-DD)
+            artist_ids: List of Spotify artist IDs
+
+        Returns:
+            Metrics dictionary
+        """
+        from dotenv import load_dotenv
+        import spotipy
+        from spotipy.oauth2 import SpotifyClientCredentials
+        from artist_tracker.tracker import SpotifyReleaseTracker
+        from artist_tracker.database import ArtistDatabase
+        from artist_tracker.profiler import PerformanceStats
+        from benchmarks.cassette import create_mock_spotify
+
+        # Load credentials
+        load_dotenv(self.project_root / ".env")
+        client_id = os.environ.get('SPOTIFY_CLIENT_ID', 'dummy_id')
+        client_secret = os.environ.get('SPOTIFY_CLIENT_SECRET', 'dummy_secret')
+
+        # Create real Spotify client
+        auth_manager = SpotifyClientCredentials(
+            client_id=client_id,
+            client_secret=client_secret
+        )
+        real_client = spotipy.Spotify(auth_manager=auth_manager)
+
+        # Wrap with cassette mock
+        mock_client = create_mock_spotify(real_client, cassette_name, self.cassettes_dir)
+
+        # Setup profiler and database
+        profiler = PerformanceStats()
+        db = ArtistDatabase(str(self.db_path))
+
+        # Calculate lookback days from cutoff date
+        cutoff_datetime = datetime.strptime(cutoff_date, "%Y-%m-%d")
+        lookback_days = (datetime.now() - cutoff_datetime).days
+
+        # Create tracker with mock client
+        tracker = SpotifyReleaseTracker(
+            client_id=client_id,
+            client_secret=client_secret,
+            lookback_days=lookback_days,
+            profiler=profiler,
+            db=db,
+            spotify_client=mock_client
+        )
+
+        # Run tracking
+        start_time = time.time()
+
+        try:
+            # Track releases by artist IDs
+            releases = []
+            for artist_id in artist_ids:
+                artist_releases = tracker._get_recent_releases(artist_id)
+                releases.extend(artist_releases)
+
+            execution_time = time.time() - start_time
+
+            # Finalize cassette
+            mock_client.finalize_cassette()
+
+            # Build metrics from profiler
+            metrics = {
+                "api_calls_total": profiler.get_total_api_calls(),
+                "api_calls": profiler.api_calls.copy(),
+                "cache_hits": profiler.cache_hits,
+                "cache_misses": profiler.cache_misses,
+                "cache_hit_rate": profiler.get_cache_hit_rate(),
+                "execution_time_seconds": execution_time,
+                "releases_found": len(releases),
+                "wall_time_seconds": execution_time
+            }
+
+            return metrics
+
+        finally:
+            # Always finalize cassette
+            mock_client.finalize_cassette()
+
     def run_scenario(self, scenario_name: str, fixture_data: Dict[str, Any],
                      cold_cache: bool) -> Dict[str, Any]:
         """Run a single benchmark scenario"""
@@ -197,6 +298,9 @@ class BenchmarkRunner:
         print(f"Cache mode: {'COLD' if cold_cache else 'HOT'}")
         print(f"Artists: {len(fixture_data['artists'])}")
         print(f"Cutoff date: {fixture_data['cutoff_date']}")
+        if self.use_cassettes:
+            cassette_mode = "RECORD" if os.environ.get('BENCHMARK_RECORD') else "PLAYBACK"
+            print(f"Cassette mode: {cassette_mode}")
         print(f"{'='*80}")
 
         # Setup database (creates clean state for cold cache)
@@ -206,10 +310,22 @@ class BenchmarkRunner:
 
         # Run benchmark
         print("Executing track command...")
-        metrics = self.run_track_command(
-            cutoff_date=fixture_data['cutoff_date'],
-            force_refresh=False  # We control cache via DB state
-        )
+
+        if self.use_cassettes:
+            # Use cassette mode (minimal API calls)
+            artist_ids = [artist['id'] for artist in fixture_data['artists']]
+            cassette_name = f"{scenario_name}"
+            metrics = self.run_track_with_cassette(
+                cassette_name=cassette_name,
+                cutoff_date=fixture_data['cutoff_date'],
+                artist_ids=artist_ids
+            )
+        else:
+            # Use subprocess mode (runs actual CLI)
+            metrics = self.run_track_command(
+                cutoff_date=fixture_data['cutoff_date'],
+                force_refresh=False  # We control cache via DB state
+            )
 
         # Build result
         result = {
@@ -359,17 +475,27 @@ Examples:
         help='Output JSON file path (default: results/benchmark_TIMESTAMP.json)'
     )
 
+    parser.add_argument(
+        '--no-cassettes',
+        action='store_true',
+        help='Disable cassettes and make real API calls (runs via CLI subprocess)'
+    )
+
     args = parser.parse_args()
 
     # Determine project root (parent of benchmarks directory)
     project_root = Path(__file__).parent.parent
 
     # Initialize runner
-    runner = BenchmarkRunner(project_root)
+    use_cassettes = not args.no_cassettes
+    runner = BenchmarkRunner(project_root, use_cassettes=use_cassettes)
 
     # Run benchmarks
     print("Starting benchmark suite...")
     print(f"Suite: {args.suite}")
+    print(f"Cassettes: {'enabled' if use_cassettes else 'disabled'}")
+    if use_cassettes and os.environ.get('BENCHMARK_RECORD'):
+        print("⚠️  RECORD MODE - Will make real API calls and update cassettes")
 
     results = runner.run_suite(args.suite)
 

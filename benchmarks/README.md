@@ -18,6 +18,7 @@ The benchmark suite is designed to return **consistent API call counts** regardl
 2. **Fixed Cutoff Dates** - Uses dates in the past (e.g., `2024-12-31`) to ensure immutable data
 3. **Immutable Past Releases** - Assumes Spotify releases before the cutoff date never change
 4. **API Calls as Primary Metric** - Counts API calls (network-independent) rather than execution time
+5. **Cassette Recording** - Records API responses once and replays them to **minimize actual Spotify API calls**
 
 ### What Can Vary
 
@@ -47,12 +48,77 @@ While API call counts should be identical, these metrics may vary:
 
 ### Prerequisites
 
-Ensure you have Spotify API credentials configured:
+Spotify API credentials are **optional** when using cassettes (the default mode).
+
+For recording mode or running without cassettes, configure credentials:
 ```bash
 export SPOTIFY_CLIENT_ID="your_client_id"
 export SPOTIFY_CLIENT_SECRET="your_client_secret"
 # Or create a .env file with these values
 ```
+
+## Cassette Recording System
+
+The benchmark suite uses a **VCR-style cassette system** to minimize actual Spotify API calls.
+
+### How It Works
+
+1. **First Run (Record Mode)** - Makes real API calls and saves responses to JSON files
+2. **Subsequent Runs (Playback Mode)** - Replays saved responses, **zero API calls**
+3. **Consistent Results** - Same artist IDs + cutoff dates = identical API responses
+
+### Benefits
+
+- ✅ **No API calls** during normal benchmark runs
+- ✅ **Faster execution** - no network latency
+- ✅ **Works offline** - no internet connection needed
+- ✅ **Reproducible** - exact same data every time
+- ✅ **Respectful** - doesn't spam Spotify's API
+
+### Cassette Modes
+
+**Playback Mode** (default):
+```bash
+# Uses existing cassettes, no API calls
+python benchmarks/benchmark.py --suite small
+```
+
+**Record Mode** (updates cassettes):
+```bash
+# Makes real API calls and saves responses
+BENCHMARK_RECORD=1 python benchmarks/benchmark.py --suite small
+```
+
+**No Cassettes** (direct API calls):
+```bash
+# Disables cassettes, runs via CLI subprocess
+python benchmarks/benchmark.py --suite small --no-cassettes
+```
+
+### Cassette Storage
+
+Cassettes are stored in `benchmarks/cassettes/`:
+```
+cassettes/
+├── artists_small_cold.json    # Cold cache scenario for small suite
+├── artists_small_hot.json     # Hot cache scenario for small suite
+├── artists_medium_cold.json
+├── artists_medium_hot.json
+└── ...
+```
+
+Each cassette contains:
+- Request details (method, parameters)
+- Response data (exactly as returned by Spotify)
+- Metadata (cassette version, interaction count)
+
+### When to Re-record Cassettes
+
+Re-record cassettes when:
+- ✅ Fixture artists change (new artist IDs added)
+- ✅ Cutoff date changes
+- ✅ You want to update to latest Spotify data
+- ❌ NOT for routine benchmark runs
 
 ### Basic Usage
 
