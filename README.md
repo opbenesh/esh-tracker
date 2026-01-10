@@ -48,7 +48,7 @@ $ python main.py track --liked
 
 ## 🚀 Installation
 
-**Prerequisites**: Python 3.7+, Spotify account (free)
+**Prerequisites**: Python 3.7+, Spotify account (free tier is fine)
 
 1. **Install dependencies**
    ```bash
