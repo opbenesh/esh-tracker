@@ -40,9 +40,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/opbenesh/artist-tracker"
-Repository = "https://github.com/opbenesh/artist-tracker"
-Issues = "https://github.com/opbenesh/artist-tracker/issues"
+Homepage = "https://github.com/opbenesh/spotify-tracker"
+Repository = "https://github.com/opbenesh/spotify-tracker"
+Issues = "https://github.com/opbenesh/spotify-tracker/issues"
 
 [project.scripts]
 spotify-tracker = "artist_tracker.cli:main"

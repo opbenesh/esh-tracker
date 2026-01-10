@@ -56,7 +56,7 @@ $ spotify-tracker track --liked
    pip install .
    
    # Option B: Install directly from GitHub
-   pip install git+https://github.com/opbenesh/artist-tracker.git
+   pip install git+https://github.com/opbenesh/spotify-tracker.git
    ```
 
 2. **Get Spotify API credentials** (takes 2 minutes)
@@ -169,4 +169,11 @@ This tool solves that. It tracks everyone you care about, filters the noise, and
 
 🤖 **Agent-built** — Written entirely by AI. I just approved PRs and hardcoded metal band names into the tests.
 
-**Note**: This tool uses the Spotify Web API. Respect their [Terms of Service](https://www.spotify.com/legal/end-user-agreement/).
+## ⚖️ Legal
+
+This project is **not affiliated with, endorsed by, or sponsored by Spotify AB**. "Spotify" is a registered trademark of Spotify AB.
+
+This tool uses the [Spotify Web API](https://developer.spotify.com/documentation/web-api/) for legitimate purposes (accessing your own music data). Please respect Spotify's [Terms of Service](https://www.spotify.com/legal/end-user-agreement/) and [Developer Terms](https://developer.spotify.com/terms/).
+
+Licensed under the [MIT License](LICENSE) — use freely, but at your own risk.
+
