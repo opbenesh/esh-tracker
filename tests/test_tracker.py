@@ -153,8 +153,9 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
             }
         }
 
-        artist_id = self.tracker._search_artist('Taylor Swift')
+        artist_id, artist_name = self.tracker._search_artist('Taylor Swift')
         self.assertEqual(artist_id, 'artist123')
+        self.assertEqual(artist_name, 'Taylor Swift')
         self.tracker.sp.search.assert_called_once()
 
     def test_search_artist_not_found(self):
@@ -166,8 +167,9 @@ class TestSpotifyReleaseTracker(unittest.TestCase):
             }
         }
 
-        artist_id = self.tracker._search_artist('NonexistentArtist')
+        artist_id, artist_name = self.tracker._search_artist('NonexistentArtist')
         self.assertIsNone(artist_id)
+        self.assertIsNone(artist_name)
 
     def test_get_artist_name_success(self):
         """Test getting artist name by ID."""
@@ -449,9 +451,10 @@ class TestRetryLogic(unittest.TestCase):
             {'artists': {'items': [{'id': 'artist123', 'name': 'Test'}]}}
         ]
         
-        result = self.tracker._search_artist('Test Artist')
+        artist_id, artist_name = self.tracker._search_artist('Test Artist')
         
-        self.assertEqual(result, 'artist123')
+        self.assertEqual(artist_id, 'artist123')
+        self.assertEqual(artist_name, 'Test')
         self.assertEqual(self.tracker.sp.search.call_count, 2)
         mock_sleep.assert_called()  # Should have slept between retries
 
@@ -469,9 +472,10 @@ class TestRetryLogic(unittest.TestCase):
             {'artists': {'items': [{'id': 'artist123', 'name': 'Test'}]}}
         ]
         
-        result = self.tracker._search_artist('Test Artist')
+        artist_id, artist_name = self.tracker._search_artist('Test Artist')
         
-        self.assertEqual(result, 'artist123')
+        self.assertEqual(artist_id, 'artist123')
+        self.assertEqual(artist_name, 'Test')
         self.assertEqual(self.tracker.sp.search.call_count, 2)
 
     def test_client_error_no_retry(self):

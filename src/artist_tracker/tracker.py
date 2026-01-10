@@ -290,15 +290,15 @@ class SpotifyReleaseTracker:
                 return True
         return False
 
-    def _search_artist(self, artist_name: str) -> Optional[str]:
+    def _search_artist(self, artist_name: str) -> Tuple[Optional[str], Optional[str]]:
         """
-        Search for an artist by name and return their ID with retry logic.
+        Search for an artist by name and return their ID and official name with retry logic.
 
         Args:
             artist_name: Name of the artist to search
 
         Returns:
-            Artist ID or None if not found
+            Tuple of (Artist ID, Official Name). Both None if not found.
 
         Raises:
             SpotifyAPIError: If API call fails after retries
@@ -316,11 +316,12 @@ class SpotifyReleaseTracker:
             if results['artists']['items']:
                 artist = results['artists']['items'][0]
                 artist_id = artist['id']
-                logger.info(f"Found artist '{artist['name']}' (ID: {artist_id})")
-                return artist_id
+                official_name = artist['name']
+                logger.info(f"Found artist '{official_name}' (ID: {artist_id})")
+                return artist_id, official_name
             else:
                 logger.warning(f"No results found for artist '{artist_name}'")
-                return None
+                return None, None
 
         except (SpotifyAPIError, RateLimitError) as e:
             logger.error(f"API error searching for artist '{artist_name}': {e}")
@@ -672,15 +673,11 @@ class SpotifyReleaseTracker:
 
         # Get artist ID if we have a name
         if artist_name and not artist_id:
-            artist_id = self._search_artist(artist_name)
+            artist_id, official_name = self._search_artist(artist_name)
             if not artist_id:
                 return artist_name, []  # Return name for missing artists tracking
 
             # Update artist_name to the official one from Spotify to fix capitalization
-            # We already did a search, so ideally we'd get the name from that result,
-            # but _search_artist only returns the ID.
-            # Let's fetch the official name using the ID.
-            official_name = self._get_artist_name(artist_id)
             if official_name:
                 artist_name = official_name
 
