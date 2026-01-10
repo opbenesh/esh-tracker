@@ -3,6 +3,7 @@
 </div>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/esh-tracker.svg)](https://badge.fury.io/py/esh-tracker)
 [![Agent Built](https://img.shields.io/badge/Built%20By-Agent-blueviolet)](AGENTS.md)
 
 **Your personal radar for new Spotify releases.**
