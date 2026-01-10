@@ -86,7 +86,7 @@ class SpotifyReleaseTracker:
     MAX_RETRIES = 3
     RETRY_BASE_DELAY = 2.0  # seconds
 
-    def __init__(self, client_id: str, client_secret: str, lookback_days: Optional[int] = None, profiler: Optional[PerformanceStats] = None):
+    def __init__(self, client_id: str, client_secret: str, lookback_days: Optional[int] = None, profiler: Optional[PerformanceStats] = None, db: Optional[ArtistDatabase] = None, force_refresh: bool = False):
         """
         Initialize the tracker with Spotify credentials.
 
@@ -95,6 +95,8 @@ class SpotifyReleaseTracker:
             client_secret: Spotify API client secret
             lookback_days: Optional custom lookback window in days (default: 90)
             profiler: Optional PerformanceStats instance for profiling
+            db: Optional ArtistDatabase instance for caching
+            force_refresh: If True, bypass cache and fetch fresh data
         """
         auth_manager = SpotifyClientCredentials(
             client_id=client_id,
@@ -104,6 +106,8 @@ class SpotifyReleaseTracker:
         self.lookback_days = lookback_days if lookback_days is not None else self.LOOKBACK_DAYS
         self.cutoff_date = datetime.now() - timedelta(days=self.lookback_days)
         self.profiler = profiler
+        self.db = db
+        self.force_refresh = force_refresh
         logger.info(f"Initialized tracker with cutoff date: {self.cutoff_date.date()} ({self.lookback_days} days)")
 
     def _call_api(self, endpoint: str, func, *args, **kwargs):
@@ -404,6 +408,40 @@ class SpotifyReleaseTracker:
         Returns:
             List of release dictionaries with deduplication
         """
+        # Check cache first if available and not forcing refresh
+        if self.db and not self.force_refresh:
+            cutoff_date_str = self.cutoff_date.strftime('%Y-%m-%d')
+            cached_releases = self.db.get_cached_releases(artist_id, cutoff_date_str)
+
+            if cached_releases:
+                logger.info(f"Using cached releases for artist '{artist_name}' ({len(cached_releases)} releases)")
+                if self.profiler:
+                    self.profiler.record_cache_hit()
+
+                # Convert cached format to output format
+                releases = []
+                for cached in cached_releases:
+                    releases.append({
+                        'artist': artist_name,
+                        'album': cached['album_name'],
+                        'track': cached['track_name'],
+                        'release_date': cached['release_date'],
+                        'album_type': cached['album_type'],
+                        'isrc': cached['isrc'] or 'N/A',
+                        'spotify_url': cached['spotify_url'],
+                        'popularity': cached['popularity']
+                    })
+
+                # Apply max_tracks cap if specified
+                if max_tracks and len(releases) > max_tracks:
+                    releases.sort(key=lambda x: x['popularity'], reverse=True)
+                    releases = releases[:max_tracks]
+
+                return releases
+            else:
+                if self.profiler:
+                    self.profiler.record_cache_miss()
+
         seen_isrcs: Set[str] = set()
         releases = []
 
@@ -494,7 +532,11 @@ class SpotifyReleaseTracker:
                             'album_type': album['album_type'],
                             'isrc': isrc or 'N/A',
                             'spotify_url': full_track['external_urls']['spotify'],
-                            'popularity': popularity
+                            'popularity': popularity,
+                            # Internal IDs for caching
+                            'artist_id': artist_id,
+                            'album_id': album_id,
+                            'track_id': track['id']
                         })
 
                     except Exception as e:
@@ -514,6 +556,32 @@ class SpotifyReleaseTracker:
             logger.info(
                 f"Found {len(releases)} unique recent releases for '{artist_name}'"
             )
+
+            # Cache the fetched releases if database is available
+            if self.db and releases:
+                logger.debug(f"Caching {len(releases)} releases for artist '{artist_name}'")
+                for release in releases:
+                    try:
+                        # Extract IDs from the release data
+                        # Note: We need to store artist_id, album_id, track_id which aren't in the final release dict
+                        # So we need to modify the release building code to include these IDs
+                        # For now, cache with what we have - we'll need to enhance this
+                        cache_data = {
+                            'artist_id': artist_id,
+                            'album_id': release.get('album_id', ''),  # We need to add this to releases
+                            'track_id': release.get('track_id', ''),  # We need to add this to releases
+                            'isrc': release['isrc'] if release['isrc'] != 'N/A' else None,
+                            'release_date': release['release_date'],
+                            'album_name': release['album'],
+                            'track_name': release['track'],
+                            'album_type': release['album_type'],
+                            'popularity': release['popularity'],
+                            'spotify_url': release['spotify_url']
+                        }
+                        self.db.cache_release(cache_data)
+                    except Exception as e:
+                        logger.warning(f"Failed to cache release '{release['track']}': {e}")
+
             return releases
 
         except Exception as e:
@@ -1465,6 +1533,11 @@ Examples:
         action='store_true',
         help='Enable performance profiling and show statistics'
     )
+    parser_track.add_argument(
+        '--force-refresh',
+        action='store_true',
+        help='Bypass cache and fetch fresh data from API'
+    )
 
     # export command
     parser_export = subparsers.add_parser(
@@ -1576,14 +1649,28 @@ Examples:
         elif args.days:
             lookback_days = args.days
 
+    # Initialize database first
+    db = ArtistDatabase('artists.db')
+
     # Create profiler if --profile flag is set for track command
     profiler = None
     if args.command == 'track' and getattr(args, 'profile', False):
         profiler = PerformanceStats()
 
-    # Initialize tracker and database
-    tracker = SpotifyReleaseTracker(client_id, client_secret, lookback_days=lookback_days, profiler=profiler)
-    db = ArtistDatabase('artists.db')
+    # Get force_refresh flag for track command
+    force_refresh = False
+    if args.command == 'track':
+        force_refresh = getattr(args, 'force_refresh', False)
+
+    # Initialize tracker with database and options
+    tracker = SpotifyReleaseTracker(
+        client_id,
+        client_secret,
+        lookback_days=lookback_days,
+        profiler=profiler,
+        db=db,
+        force_refresh=force_refresh
+    )
 
     # Execute command
     if args.command == 'import-txt':

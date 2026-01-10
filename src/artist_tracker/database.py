@@ -94,6 +94,36 @@ class ArtistDatabase:
                 ON artists(spotify_artist_id)
             ''')
 
+            # Create releases cache table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS releases_cache (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    artist_id TEXT NOT NULL,
+                    album_id TEXT NOT NULL,
+                    track_id TEXT NOT NULL,
+                    isrc TEXT,
+                    release_date TEXT NOT NULL,
+                    album_name TEXT NOT NULL,
+                    track_name TEXT NOT NULL,
+                    album_type TEXT NOT NULL,
+                    popularity INTEGER,
+                    spotify_url TEXT NOT NULL,
+                    fetched_at TEXT NOT NULL,
+                    UNIQUE(track_id)
+                )
+            ''')
+
+            # Create indexes for faster cache lookups
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_releases_artist_date
+                ON releases_cache(artist_id, release_date)
+            ''')
+
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_releases_fetched
+                ON releases_cache(fetched_at)
+            ''')
+
             conn.commit()
             logger.info(f"Database initialized at {self.db_path}")
 
@@ -346,3 +376,165 @@ class ArtistDatabase:
             raise DatabaseError(f"Invalid JSON file: {e}") from e
         except Exception as e:
             raise DatabaseError(f"Failed to import from JSON: {e}") from e
+
+    def cache_release(self, release_data: dict) -> bool:
+        """
+        Cache a release in the database.
+
+        Args:
+            release_data: Dictionary with release information
+
+        Returns:
+            True if cached successfully, False if already exists
+
+        Raises:
+            DatabaseError: If caching fails
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                fetched_at = datetime.now().isoformat()
+
+                cursor.execute('''
+                    INSERT OR REPLACE INTO releases_cache
+                    (artist_id, album_id, track_id, isrc, release_date, album_name,
+                     track_name, album_type, popularity, spotify_url, fetched_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    release_data.get('artist_id'),
+                    release_data.get('album_id'),
+                    release_data.get('track_id'),
+                    release_data.get('isrc'),
+                    release_data.get('release_date'),
+                    release_data.get('album_name'),
+                    release_data.get('track_name'),
+                    release_data.get('album_type'),
+                    release_data.get('popularity'),
+                    release_data.get('spotify_url'),
+                    fetched_at
+                ))
+
+                conn.commit()
+                return True
+
+        except sqlite3.Error as e:
+            raise DatabaseError(f"Failed to cache release: {e}") from e
+
+    def get_cached_releases(self, artist_id: str, cutoff_date: str, max_age_hours: int = 24) -> List[dict]:
+        """
+        Get cached releases for an artist within the date range, if cache is fresh.
+
+        Args:
+            artist_id: Spotify artist ID
+            cutoff_date: Minimum release date to consider (YYYY-MM-DD)
+            max_age_hours: Maximum age of cache in hours (default: 24)
+
+        Returns:
+            List of cached release dictionaries, or empty list if cache is stale
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Calculate cache expiry time
+                from datetime import timedelta
+                cache_expiry = (datetime.now() - timedelta(hours=max_age_hours)).isoformat()
+
+                cursor.execute('''
+                    SELECT artist_id, album_id, track_id, isrc, release_date, album_name,
+                           track_name, album_type, popularity, spotify_url, fetched_at
+                    FROM releases_cache
+                    WHERE artist_id = ?
+                    AND release_date >= ?
+                    AND fetched_at >= ?
+                    ORDER BY release_date DESC
+                ''', (artist_id, cutoff_date, cache_expiry))
+
+                rows = cursor.fetchall()
+                releases = []
+
+                for row in rows:
+                    releases.append({
+                        'artist_id': row[0],
+                        'album_id': row[1],
+                        'track_id': row[2],
+                        'isrc': row[3],
+                        'release_date': row[4],
+                        'album_name': row[5],
+                        'track_name': row[6],
+                        'album_type': row[7],
+                        'popularity': row[8],
+                        'spotify_url': row[9],
+                        'fetched_at': row[10]
+                    })
+
+                return releases
+
+        except sqlite3.Error as e:
+            logger.error(f"Error fetching cached releases: {e}")
+            return []
+
+    def clear_expired_cache(self, max_age_hours: int = 168) -> int:
+        """
+        Clear cache entries older than specified hours.
+
+        Args:
+            max_age_hours: Maximum age in hours (default: 168 = 7 days)
+
+        Returns:
+            Number of entries cleared
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                from datetime import timedelta
+                expiry_time = (datetime.now() - timedelta(hours=max_age_hours)).isoformat()
+
+                cursor.execute('''
+                    DELETE FROM releases_cache
+                    WHERE fetched_at < ?
+                ''', (expiry_time,))
+
+                deleted = cursor.rowcount
+                conn.commit()
+
+                if deleted > 0:
+                    logger.info(f"Cleared {deleted} expired cache entries")
+
+                return deleted
+
+        except sqlite3.Error as e:
+            logger.error(f"Error clearing expired cache: {e}")
+            return 0
+
+    def clear_artist_cache(self, artist_id: str) -> int:
+        """
+        Clear all cached releases for a specific artist.
+
+        Args:
+            artist_id: Spotify artist ID
+
+        Returns:
+            Number of entries cleared
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                cursor.execute('''
+                    DELETE FROM releases_cache
+                    WHERE artist_id = ?
+                ''', (artist_id,))
+
+                deleted = cursor.rowcount
+                conn.commit()
+
+                if deleted > 0:
+                    logger.info(f"Cleared {deleted} cache entries for artist {artist_id}")
+
+                return deleted
+
+        except sqlite3.Error as e:
+            logger.error(f"Error clearing artist cache: {e}")
+            return 0
