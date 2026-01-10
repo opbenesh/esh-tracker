@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "spotify-release-tracker"
+name = "esh-tracker"
 version = "1.0.0"
 description = "Track new releases from your favorite Spotify artists"
 readme = "README.md"
@@ -40,12 +40,12 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/opbenesh/spotify-tracker"
-Repository = "https://github.com/opbenesh/spotify-tracker"
-Issues = "https://github.com/opbenesh/spotify-tracker/issues"
+Homepage = "https://github.com/opbenesh/esh-tracker"
+Repository = "https://github.com/opbenesh/esh-tracker"
+Issues = "https://github.com/opbenesh/esh-tracker/issues"
 
 [project.scripts]
-spotify-tracker = "artist_tracker.cli:main"
+esh-tracker = "artist_tracker.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
