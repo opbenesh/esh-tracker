@@ -31,6 +31,10 @@
 - **Spotipy & Markets**: `sp.artist_albums` requires `country` parameter (e.g., 'US'). Other endpoints like `sp.track` use `market`. Mixing them up returns 404s or empty lists.
 - **Rate Limiting**: The app handles 429 errors with exponential backoff. Do not remove this logic.
 - **Sensitive Data**: Never commit `.env` or `artists.db`.
+- **Git Branch Deletion**: Before deleting remote branches, always verify they're merged first:
+  ```bash
+  git branch -r --merged main  # Only these are safe to delete
+  ```
 
 ## Setup commands
 ### Tools & Dependencies
