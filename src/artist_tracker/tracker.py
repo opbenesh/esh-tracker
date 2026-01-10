@@ -29,6 +29,7 @@ from .exceptions import (
     SpotifyAPIError,
     ValidationError
 )
+from .profiler import PerformanceStats, ProfilerContext
 
 
 # Configure logging
@@ -61,6 +62,14 @@ def setup_logging(verbose: bool = False):
 logger = logging.getLogger(__name__)
 
 
+class DummyContext:
+    """Dummy context manager that does nothing (for when profiler is disabled)."""
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False
+
+
 class SpotifyReleaseTracker:
     """Tracks recent releases from Spotify artists."""
 
@@ -77,7 +86,7 @@ class SpotifyReleaseTracker:
     MAX_RETRIES = 3
     RETRY_BASE_DELAY = 2.0  # seconds
 
-    def __init__(self, client_id: str, client_secret: str, lookback_days: Optional[int] = None):
+    def __init__(self, client_id: str, client_secret: str, lookback_days: Optional[int] = None, profiler: Optional[PerformanceStats] = None):
         """
         Initialize the tracker with Spotify credentials.
 
@@ -85,6 +94,7 @@ class SpotifyReleaseTracker:
             client_id: Spotify API client ID
             client_secret: Spotify API client secret
             lookback_days: Optional custom lookback window in days (default: 90)
+            profiler: Optional PerformanceStats instance for profiling
         """
         auth_manager = SpotifyClientCredentials(
             client_id=client_id,
@@ -93,7 +103,26 @@ class SpotifyReleaseTracker:
         self.sp = spotipy.Spotify(auth_manager=auth_manager)
         self.lookback_days = lookback_days if lookback_days is not None else self.LOOKBACK_DAYS
         self.cutoff_date = datetime.now() - timedelta(days=self.lookback_days)
+        self.profiler = profiler
         logger.info(f"Initialized tracker with cutoff date: {self.cutoff_date.date()} ({self.lookback_days} days)")
+
+    def _call_api(self, endpoint: str, func, *args, **kwargs):
+        """
+        Call Spotify API and record in profiler if enabled.
+
+        Args:
+            endpoint: Name of the API endpoint for profiling
+            func: Function to call
+            *args: Positional arguments
+            **kwargs: Keyword arguments
+
+        Returns:
+            Result from the API call
+        """
+        if self.profiler:
+            self.profiler.record_api_call(endpoint)
+
+        return func(*args, **kwargs)
 
     def _retry_on_error(self, func, *args, max_retries: int = None, **kwargs):
         """
@@ -258,7 +287,7 @@ class SpotifyReleaseTracker:
             SpotifyAPIError: If API call fails after retries
         """
         def search_call():
-            return self.sp.search(
+            return self._call_api('search_artist', self.sp.search,
                 q=f'artist:{artist_name}',
                 type='artist',
                 limit=1
@@ -294,7 +323,7 @@ class SpotifyReleaseTracker:
             Artist name or None if not found
         """
         try:
-            artist = self.sp.artist(artist_id)
+            artist = self._call_api('artist', self.sp.artist, artist_id)
             return artist['name']
         except Exception as e:
             logger.error(f"Error fetching artist ID '{artist_id}': {e}")
@@ -318,11 +347,16 @@ class SpotifyReleaseTracker:
             self._isrc_info_cache: Dict[str, Tuple[Optional[datetime], Optional[str]]] = {}
 
         if isrc in self._isrc_info_cache:
+            if self.profiler:
+                self.profiler.record_cache_hit()
             return self._isrc_info_cache[isrc]
+
+        if self.profiler:
+            self.profiler.record_cache_miss()
 
         try:
             # Search for all tracks with this ISRC
-            results = self.sp.search(q=f"isrc:{isrc}", type="track", limit=50)
+            results = self._call_api('search_isrc', self.sp.search, q=f"isrc:{isrc}", type="track", limit=50)
 
             earliest_date: Optional[datetime] = None
             earliest_album_name: Optional[str] = None
@@ -375,11 +409,12 @@ class SpotifyReleaseTracker:
 
         try:
             # Get all album types
-            albums = self.sp.artist_albums(
-                artist_id,
-                album_type='album,single,compilation',
-                limit=50
-            )
+            with ProfilerContext(self.profiler, 'fetch_artist_albums') if self.profiler else DummyContext():
+                albums = self._call_api('artist_albums', self.sp.artist_albums,
+                    artist_id,
+                    album_type='album,single,compilation',
+                    limit=50
+                )
 
             for album in albums['items']:
                 # Parse release date
@@ -404,7 +439,7 @@ class SpotifyReleaseTracker:
 
                 # Get tracks from album
                 album_id = album['id']
-                tracks_response = self.sp.album_tracks(album_id)
+                tracks_response = self._call_api('album_tracks', self.sp.album_tracks, album_id)
                 tracks = tracks_response['items']
 
                 for track in tracks:
@@ -418,7 +453,7 @@ class SpotifyReleaseTracker:
                     # Get ISRC for deduplication
                     # Need to fetch full track details for ISRC and popularity
                     try:
-                        full_track = self.sp.track(track['id'])
+                        full_track = self._call_api('track', self.sp.track, track['id'])
                         isrc = full_track.get('external_ids', {}).get('isrc')
                         popularity = full_track.get('popularity', 0)
 
@@ -1152,6 +1187,12 @@ def cmd_track(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
         if output:
             print(output)
 
+    # Print profiler summary if enabled
+    if tracker.profiler:
+        tracker.profiler.finish()
+        print("\n", file=sys.stderr)
+        print(tracker.profiler.get_summary(), file=sys.stderr)
+
 
 def cmd_export(args, tracker: SpotifyReleaseTracker, db: ArtistDatabase):
     """Handle export command."""
@@ -1419,6 +1460,11 @@ Examples:
         default=None,
         help='Cap number of tracks per artist (uses popularity ranking)'
     )
+    parser_track.add_argument(
+        '--profile',
+        action='store_true',
+        help='Enable performance profiling and show statistics'
+    )
 
     # export command
     parser_export = subparsers.add_parser(
@@ -1530,8 +1576,13 @@ Examples:
         elif args.days:
             lookback_days = args.days
 
+    # Create profiler if --profile flag is set for track command
+    profiler = None
+    if args.command == 'track' and getattr(args, 'profile', False):
+        profiler = PerformanceStats()
+
     # Initialize tracker and database
-    tracker = SpotifyReleaseTracker(client_id, client_secret, lookback_days=lookback_days)
+    tracker = SpotifyReleaseTracker(client_id, client_secret, lookback_days=lookback_days, profiler=profiler)
     db = ArtistDatabase('artists.db')
 
     # Execute command
