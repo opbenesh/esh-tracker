@@ -1,4 +1,4 @@
-# Agent Environment Notes
+# AGENTS.md
 
 ## Important Guidelines
 - **IMPORTANT**: Use a TDD approach to solving problems. *Do not assume* that your solution is correct. Instead, *validate your solution is correct* by first creating a test case and running the test case to _prove_ the solution is working as intended.
@@ -11,12 +11,12 @@
   This ensures bugs stay fixed and prevents regression.
 - Assume your world knowledge is out of date. Use your web search tool to find up-to-date docs and information.
 - When testing APIs, remember to test both mocks and live APIs.
-- **IMPORTANT**: Whenever you discover something that you didn't know about this environment, about referenced APIs or used tools, append it to `agent.md`.
+- **IMPORTANT**: Whenever you discover something that you didn't know about this environment, about referenced APIs or used tools, append it to `AGENTS.md`.
 - **IMPORTANT**: If you want to perform experiments, put them in an `agent-experiments.py` file. Use separate methods for separate experiments and use `--` style args to run a specific experiment. Do not create additional files for experiments.
 - **IMPORTANT**: Please maintain the `README.md` file after any significant changes to ensure documentation stays synchronized with the code.
 - **IMPORTANT**: Commit and push changes after completing major features or refactoring steps to ensure work is backed up and synchronized.
 
-## Project Overview for New Agents
+## Project Overview
 ### Architecture
 - **Core Component**: `SpotifyReleaseTracker` (`src/artist_tracker/tracker.py`) orchestrates API calls and logic.
 - **Persistence**: `ArtistDatabase` (`src/artist_tracker/database.py`) manages a SQLite database (`artists.db`) for storing artist IDs.
@@ -32,25 +32,14 @@
 - **Rate Limiting**: The app handles 429 errors with exponential backoff. Do not remove this logic.
 - **Sensitive Data**: Never commit `.env` or `artists.db`.
 
-## Coding Guidelines
-- **SOLID Principles**: Follow Single Responsibility, Open-Closed, Liskov Substitution, Interface Segregation, and Dependency Inversion principles for maintainable and extensible code.
-- **DRY (Don't Repeat Yourself)**: Avoid code duplication by extracting common logic into reusable functions, classes, or modules.
-- **KISS (Keep It Simple, Stupid)**: Strive for simplicity in design and implementation. Avoid over-engineering.
-- **Clean Code**: Write readable, self-documenting code with meaningful names, small functions, and clear structure.
-- **Error Handling**: Implement robust error handling and logging to aid debugging and maintain reliability.
-- **Performance**: Optimize for performance where necessary, but prioritize readability and maintainability.
-- **Unix Philosophy**: Adhere to Unix design principles for CLI tools.
-    - **Input**: Support standard input (stdin) for data ingestion where applicable (use `-` or detection).
-    - **Output**: Separate data (stdout) from informational messages/logs (stderr). Success should often be silent or minimal.
-    - **Composition**: Tools should be pipe-friendly.
-
-## Tools & Dependencies
+## Setup commands
+### Tools & Dependencies
 - **Python version**: Python 3.x
 - **Package manager**: pip with `requirements.txt`
 - **Dependencies**: spotipy, python-dotenv, tqdm
 - **Dev dependencies**: mypy (in `requirements-dev.txt`)
 
-## Running the Application
+### Running the Application
 ```bash
 # Install dependencies first
 pip install -r requirements.txt
@@ -68,7 +57,19 @@ python main.py track --liked
 python main.py track --artist="Megadeth"
 ```
 
-## Testing
+## Code style
+- **SOLID Principles**: Follow Single Responsibility, Open-Closed, Liskov Substitution, Interface Segregation, and Dependency Inversion principles for maintainable and extensible code.
+- **DRY (Don't Repeat Yourself)**: Avoid code duplication by extracting common logic into reusable functions, classes, or modules.
+- **KISS (Keep It Simple, Stupid)**: Strive for simplicity in design and implementation. Avoid over-engineering.
+- **Clean Code**: Write readable, self-documenting code with meaningful names, small functions, and clear structure.
+- **Error Handling**: Implement robust error handling and logging to aid debugging and maintain reliability.
+- **Performance**: Optimize for performance where necessary, but prioritize readability and maintainability.
+- **Unix Philosophy**: Adhere to Unix design principles for CLI tools.
+    - **Input**: Support standard input (stdin) for data ingestion where applicable (use `-` or detection).
+    - **Output**: Separate data (stdout) from informational messages/logs (stderr). Success should often be silent or minimal.
+    - **Composition**: Tools should be pipe-friendly.
+
+## Testing instructions
 ```bash
 # Run all tests (unit + live integration)
 # Note: PYTHONPATH=src is required because the package is in src/artist_tracker/
@@ -142,7 +143,9 @@ When maintaining the README, follow these principles:
 - Solution-focused (what to do, not just what went wrong)
 - Keep it brief - quick answers to common questions
 
-## Performance Notes
+## Performance
+
+### Performance Notes
 
 **Performance Metric**: We quantify application performance using a simple, objective metric:
 - **# of Spotify API calls performed during the run**
@@ -160,11 +163,11 @@ When maintaining the README, follow these principles:
 
 **Optimization Opportunities**: See `TODO.md` for detailed performance optimization plan with 6 phases prioritized by ROI.
 
-## Performance Insights
+### Performance Insights
 
 This section documents interesting performance characteristics and insights discovered during development and optimization work.
 
-### Implemented Optimizations (2026-01-10)
+#### Implemented Optimizations (2026-01-10)
 
 **Phase 1: Persistent Release Caching** ✅
 - Added SQLite-based caching for release data
@@ -187,7 +190,7 @@ This section documents interesting performance characteristics and insights disc
 - Operation timing measurements
 - Use `--profile` flag to see metrics
 
-### Usage
+#### Usage
 ```bash
 # First run (cold cache) - fetches from API
 python main.py track --profile
@@ -199,10 +202,10 @@ python main.py track --profile
 python main.py track --force-refresh --profile
 ```
 
-### Baseline Metrics
+#### Baseline Metrics
 *To be documented during testing*
 
-### Discoveries
+#### Discoveries
 - ISRC lookups were being repeated on every session despite being immutable
 - **CRITICAL BUG FIXED (2026-01-10)**: Spotify does NOT return albums sorted chronologically
   - Albums are grouped by type: albums → singles → compilations
