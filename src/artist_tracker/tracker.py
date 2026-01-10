@@ -534,6 +534,15 @@ class SpotifyReleaseTracker:
                         isrc = full_track.get('external_ids', {}).get('isrc')
                         popularity = full_track.get('popularity', 0)
 
+                        # Filter out tracks not by this artist (e.g., compilation albums)
+                        track_artist_ids = [artist['id'] for artist in full_track.get('artists', [])]
+                        if artist_id not in track_artist_ids:
+                            logger.debug(
+                                f"Skipping track '{track['name']}' - not by {artist_name} "
+                                f"(appears on compilation)"
+                            )
+                            continue
+
                         if isrc:
                             if isrc in seen_isrcs:
                                 logger.info(
