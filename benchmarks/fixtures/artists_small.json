@@ -1,0 +1,16 @@
+{
+  "description": "Small benchmark set - 10 artists with varied release patterns",
+  "cutoff_date": "2024-12-31",
+  "artists": [
+    {"id": "3WrFJ7ztbogyGnTHbHJFl2", "name": "The Beatles", "note": "Legacy artist, stable catalog"},
+    {"id": "06HL4z0CvFAxyc27GXpf02", "name": "Taylor Swift", "note": "Very active, frequent releases"},
+    {"id": "4Z8W4fKeB5YxbusRsdQVPb", "name": "Radiohead", "note": "Moderate catalog, occasional releases"},
+    {"id": "6eUKZXaKkcviH0Ku9w2n3V", "name": "Ed Sheeran", "note": "Popular, moderate release frequency"},
+    {"id": "4tZwfgrHOc3mvqYlEYSvVi", "name": "Daft Punk", "note": "Legacy electronic, stable catalog"},
+    {"id": "0du5cEVh5yTK9QJze8zA0C", "name": "Bruno Mars", "note": "Popular, infrequent releases"},
+    {"id": "2YZyLoL8N0Wb9xBt1NhZWg", "name": "Kendrick Lamar", "note": "Acclaimed, moderate releases"},
+    {"id": "7dGJo4pcD2V6oG8kP0tJRR", "name": "Eminem", "note": "Prolific, many compilations"},
+    {"id": "1Xyo4u8uXC1ZmMpatF05PJ", "name": "The Weeknd", "note": "Active, consistent releases"},
+    {"id": "699OTQXzgjhIYAHMy9RyPD", "name": "Playboi Carti", "note": "Cult following, infrequent albums"}
+  ]
+}
