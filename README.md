@@ -15,7 +15,7 @@ This CLI tool watches your favorite Spotify artists and shows you their recent r
 Want to quickly check if a band has something new?
 
 ```bash
-$ python main.py track --artist "Megadeth"
+$ spotify-tracker track --artist "Megadeth"
 
 ================================================================================
 SPOTIFY RECENT RELEASE TRACKER
@@ -33,7 +33,7 @@ Tracking 1 artists | Releases since 2025-10-20 (90 days)
 Keep all your favorite artists in one Spotify playlist. This is the most powerful way to use the tracker!
 
 ```bash
-$ python main.py track 37i9dQZF1DWWOaP4H0w5b0
+$ spotify-tracker track 37i9dQZF1DWWOaP4H0w5b0
 ```
 
 **Why this is useful**: You can manage who you follow directly in Spotify. Add an artist's song to your "Tracker" playlist, and they are automatically tracked. Remove the song to stop tracking.
@@ -43,16 +43,20 @@ $ python main.py track 37i9dQZF1DWWOaP4H0w5b0
 If you use your "Liked Songs" library as your main collection:
 
 ```bash
-$ python main.py track --liked
+$ spotify-tracker track --liked
 ```
 
 ## 🚀 Installation
 
 **Prerequisites**: Python 3.7+, Spotify account (free tier is fine)
 
-1. **Install dependencies**
+1. **Install the package**
    ```bash
-   pip install -r requirements.txt
+   # Option A: Install from source
+   pip install .
+   
+   # Option B: Install directly from GitHub
+   pip install git+https://github.com/opbenesh/artist-tracker.git
    ```
 
 2. **Get Spotify API credentials** (takes 2 minutes)
@@ -73,37 +77,37 @@ $ python main.py track --liked
 
 **From a playlist** (primary workflow):
 ```bash
-python main.py track <playlist-id>
+spotify-tracker track <playlist-id>
 ```
 
 **From multiple playlists**:
 ```bash
-python main.py track <playlist-id-1> <playlist-id-2>
+spotify-tracker track <playlist-id-1> <playlist-id-2>
 ```
 
 **From your "Liked Songs"**:
 ```bash
-python main.py track --liked
+spotify-tracker track --liked
 ```
 
 **From a single artist**:
 ```bash
-python main.py track --artist="Megadeth"
+spotify-tracker track --artist="Megadeth"
 ```
 
 **Custom time range**:
 ```bash
 # Last 30 days
-python main.py track <playlist-id> --days 30
+spotify-tracker track <playlist-id> --days 30
 
 # Since a specific date
-python main.py track <playlist-id> --since 2026-01-01
+spotify-tracker track <playlist-id> --since 2026-01-01
 ```
 
 **Limit per artist** (useful for prolific bands):
 ```bash
 # Get only the top 3 most popular tracks per artist
-python main.py track <playlist-id> --max-per-artist 3
+spotify-tracker track <playlist-id> --max-per-artist 3
 ```
 
 ## 🎯 Output Formats
@@ -112,8 +116,8 @@ By default, the tool outputs a **human-readable pretty format**. You can change 
 
 ```bash
 # For piping
-$ python main.py track <playlist-id> --format tsv
-2017-11-03	Converge	Permanent Blue	The Dusk In Us	album	USDY41700501	https://...
+$ spotify-tracker track <playlist-id> --format tsv
+2025-11-19	Converge	Love Is Not Enough	Love Is Not Enough	single	...	https://...
 ```
 
 **Other formats**:
@@ -131,14 +135,14 @@ $ python main.py track <playlist-id> --format tsv
 
 Set up a cron job to email yourself daily (using TSV for clean output):
 ```bash
-0 9 * * * python main.py track <playlist-id> --days 1 --format pretty | mail -s "New Metal Releases" you@email.com
+0 9 * * * spotify-tracker track <playlist-id> --days 1 --format pretty | mail -s "New Metal Releases" you@email.com
 ```
 
 ### Filter by Artist
 
 Use standard Unix tools to filter (using TSV for reliable parsing):
 ```bash
-python main.py track <playlist-id> --format tsv | grep -i "converge"
+spotify-tracker track <playlist-id> --format tsv | grep -i "converge"
 ```
 
 ## ❓ Troubleshooting

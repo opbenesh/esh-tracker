@@ -45,20 +45,26 @@
 
 ### Running the Application
 ```bash
-# Install dependencies first
-pip install -r requirements.txt
+# Install the package
+pip install .
 
 # Run the tracker (Playlist-First Flow)
-python main.py track <playlist-id>
+spotify-tracker track <playlist-id>
 
 # Track from multiple playlists
-python main.py track <playlist-1> <playlist-2>
+spotify-tracker track <playlist-1> <playlist-2>
 
 # Track from "Liked Songs"
-python main.py track --liked
+spotify-tracker track --liked
 
 # Demo single artist
-python main.py track --artist="Megadeth"
+spotify-tracker track --artist="Megadeth"
+```
+
+**Alternative**: Run directly without installing:
+```bash
+pip install -r requirements.txt
+python main.py track <playlist-id>
 ```
 
 ## Code style

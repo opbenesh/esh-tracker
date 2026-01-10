@@ -344,13 +344,13 @@ For debugging, you can manually run the track command:
 rm artists.db
 
 # Import artists from fixture
-python main.py import-txt <(jq -r '.artists[].id | "spotify:artist:\(.)"' benchmarks/fixtures/artists_small.json)
+spotify-tracker import-txt <(jq -r '.artists[].id | "spotify:artist:\(.)"' benchmarks/fixtures/artists_small.json)
 
 # Run with profiling
-python main.py track --since 2024-12-31 --profile
+spotify-tracker track --since 2024-12-31 --profile
 
 # Hot cache - run again immediately
-python main.py track --since 2024-12-31 --profile
+spotify-tracker track --since 2024-12-31 --profile
 ```
 
 ### Creating Custom Fixtures
