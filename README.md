@@ -163,4 +163,6 @@ This tool solves that. It tracks everyone you care about, filters the noise, and
 
 ---
 
+🤖 **Agent-built** — Written entirely by AI. I just approved PRs and hardcoded metal band names into the tests.
+
 **Note**: This tool uses the Spotify Web API. Respect their [Terms of Service](https://www.spotify.com/legal/end-user-agreement/).
