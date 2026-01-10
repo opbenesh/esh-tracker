@@ -124,6 +124,16 @@ class ArtistDatabase:
                 ON releases_cache(fetched_at)
             ''')
 
+            # Create ISRC lookup cache table (immutable, no expiry)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS isrc_lookup_cache (
+                    isrc TEXT PRIMARY KEY,
+                    earliest_date TEXT NOT NULL,
+                    earliest_album_name TEXT NOT NULL,
+                    cached_at TEXT NOT NULL
+                )
+            ''')
+
             conn.commit()
             logger.info(f"Database initialized at {self.db_path}")
 
@@ -538,3 +548,62 @@ class ArtistDatabase:
         except sqlite3.Error as e:
             logger.error(f"Error clearing artist cache: {e}")
             return 0
+
+    def cache_isrc_lookup(self, isrc: str, earliest_date: str, earliest_album_name: str) -> bool:
+        """
+        Cache an ISRC lookup result (immutable, permanent cache).
+
+        Args:
+            isrc: International Standard Recording Code
+            earliest_date: Earliest release date (YYYY-MM-DD)
+            earliest_album_name: Name of the earliest album
+
+        Returns:
+            True if cached successfully
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cached_at = datetime.now().isoformat()
+
+                cursor.execute('''
+                    INSERT OR REPLACE INTO isrc_lookup_cache
+                    (isrc, earliest_date, earliest_album_name, cached_at)
+                    VALUES (?, ?, ?, ?)
+                ''', (isrc, earliest_date, earliest_album_name, cached_at))
+
+                conn.commit()
+                return True
+
+        except sqlite3.Error as e:
+            logger.error(f"Error caching ISRC lookup for '{isrc}': {e}")
+            return False
+
+    def get_cached_isrc_lookup(self, isrc: str) -> Optional[Tuple[str, str]]:
+        """
+        Get cached ISRC lookup result.
+
+        Args:
+            isrc: International Standard Recording Code
+
+        Returns:
+            Tuple of (earliest_date, earliest_album_name) or None if not cached
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                cursor.execute('''
+                    SELECT earliest_date, earliest_album_name
+                    FROM isrc_lookup_cache
+                    WHERE isrc = ?
+                ''', (isrc,))
+
+                row = cursor.fetchone()
+                if row:
+                    return (row[0], row[1])
+                return None
+
+        except sqlite3.Error as e:
+            logger.error(f"Error fetching cached ISRC lookup for '{isrc}': {e}")
+            return None

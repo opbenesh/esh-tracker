@@ -346,7 +346,17 @@ class SpotifyReleaseTracker:
         Returns:
             Tuple of (earliest_date, original_album_name), or (None, None) if search fails
         """
-        # Check cache first (avoid redundant API calls within a session)
+        # Check persistent cache first (if database is available)
+        if self.db:
+            cached_result = self.db.get_cached_isrc_lookup(isrc)
+            if cached_result:
+                if self.profiler:
+                    self.profiler.record_cache_hit()
+                # Convert date string back to datetime
+                earliest_date = self._parse_release_date(cached_result[0])
+                return earliest_date, cached_result[1]
+
+        # Check session cache (avoid redundant API calls within a session)
         if not hasattr(self, '_isrc_info_cache'):
             self._isrc_info_cache: Dict[str, Tuple[Optional[datetime], Optional[str]]] = {}
 
@@ -382,7 +392,14 @@ class SpotifyReleaseTracker:
                     f"on {earliest_date.strftime('%Y-%m-%d')}"
                 )
 
-            # Cache the result
+                # Cache in persistent storage if database is available
+                if self.db:
+                    try:
+                        self.db.cache_isrc_lookup(isrc, earliest_date.strftime('%Y-%m-%d'), earliest_album_name)
+                    except Exception as cache_error:
+                        logger.warning(f"Failed to cache ISRC lookup for '{isrc}': {cache_error}")
+
+            # Cache the result in session cache
             self._isrc_info_cache[isrc] = (earliest_date, earliest_album_name)
             return earliest_date, earliest_album_name
 
