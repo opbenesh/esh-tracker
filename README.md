@@ -192,13 +192,6 @@ If you follow metal, hardcore, or any genre with lots of artists, you know the p
 
 This tool solves that. It tracks everyone you care about, filters the noise, and gives you a clean list of actual new releases.
 
-## 🔧 Development
-
-**Run tests**:
-```bash
-PYTHONPATH=src python -m unittest discover tests -v
-```
-
 ## 📁 Project Structure
 
 ```
