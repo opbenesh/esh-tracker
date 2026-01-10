@@ -6,7 +6,7 @@ Never miss a new release from your favorite artists. Track hundreds of bands, ge
 
 This CLI tool watches your favorite Spotify artists and shows you their recent releases. It's designed for music fans who follow many artists and want to catch new releases without constantly checking Spotify.
 
-**Perfect for**: Metal fans tracking dozens of bands, playlist curators, music journalists, or anyone who's ever missed an album drop.
+**Perfect for**: Music fanatics tracking dozens of bands, playlist curators, music journalists, or anyone who's ever missed an album drop.
 
 ## ⚡ Quick Example
 
