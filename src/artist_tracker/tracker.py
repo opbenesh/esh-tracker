@@ -907,7 +907,17 @@ def format_releases_tsv(releases: List[Dict]) -> str:
 
 def format_releases_ids(releases: List[Dict]) -> str:
     """Format releases as a list of Spotify URIs (for pasting into playlists)."""
-    return '\n'.join([f"spotify:track:{r['track_id']}" for r in releases])
+    uris = []
+    for r in releases:
+        # Extract track ID from spotify_url or use track_id if available
+        if 'track_id' in r:
+            track_id = r['track_id']
+        else:
+            # Extract from URL: https://open.spotify.com/track/TRACK_ID
+            url = r['spotify_url']
+            track_id = url.split('/track/')[-1].split('?')[0]
+        uris.append(f"spotify:track:{track_id}")
+    return '\n'.join(uris)
 
 
 def format_releases_csv(releases: List[Dict]) -> str:
