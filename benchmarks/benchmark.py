@@ -50,8 +50,9 @@ class BenchmarkRunner:
         if use_cassettes:
             self.cassettes_dir.mkdir(parents=True, exist_ok=True)
 
-        # Add src to path for imports
+        # Add src and project root to path for imports
         sys.path.insert(0, str(project_root / "src"))
+        sys.path.insert(0, str(project_root))
 
     def load_fixture(self, fixture_name: str) -> Dict[str, Any]:
         """Load artist fixture from JSON file"""
@@ -68,35 +69,16 @@ class BenchmarkRunner:
         if self.db_path.exists():
             self.db_path.unlink()
 
-        # Import artists using their IDs (no search needed)
-        # Create temporary file with artist IDs
-        import_file = self.project_root / "temp_import.txt"
-        try:
-            with open(import_file, 'w') as f:
-                for artist in fixture_data['artists']:
-                    # Use spotify:artist:ID format to skip search
-                    f.write(f"spotify:artist:{artist['id']}\n")
+        # Import the database module and populate directly
+        from artist_tracker.database import ArtistDatabase
 
-            # Import artists
-            cmd = [
-                sys.executable,
-                str(self.main_script),
-                "import-txt",
-                str(import_file)
-            ]
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=self.project_root
-            )
+        db = ArtistDatabase(str(self.db_path))
 
-            if result.returncode != 0:
-                raise RuntimeError(f"Failed to import artists: {result.stderr}")
+        # Add artists using batch operation
+        artists_to_add = [(artist['name'], artist['id']) for artist in fixture_data['artists']]
+        added, skipped = db.add_artists_batch(artists_to_add)
 
-        finally:
-            if import_file.exists():
-                import_file.unlink()
+        print(f"Added {added} artists to database, skipped {skipped}")
 
     def parse_profile_output(self, stdout: str, stderr: str) -> Dict[str, Any]:
         """Extract performance metrics from profile output"""
@@ -204,14 +186,14 @@ class BenchmarkRunner:
         return metrics
 
     def run_track_with_cassette(self, cassette_name: str, cutoff_date: str,
-                                artist_ids: List[str]) -> Dict[str, Any]:
+                                artists: List[Dict[str, str]]) -> Dict[str, Any]:
         """
         Run track command directly using tracker API with cassette support
 
         Args:
             cassette_name: Name for cassette file
             cutoff_date: Cutoff date string (YYYY-MM-DD)
-            artist_ids: List of Spotify artist IDs
+            artists: List of artist dictionaries with 'id' and 'name' keys
 
         Returns:
             Metrics dictionary
@@ -263,8 +245,8 @@ class BenchmarkRunner:
         try:
             # Track releases by artist IDs
             releases = []
-            for artist_id in artist_ids:
-                artist_releases = tracker._get_recent_releases(artist_id)
+            for artist in artists:
+                artist_releases = tracker._get_recent_releases(artist['id'], artist['name'])
                 releases.extend(artist_releases)
 
             execution_time = time.time() - start_time
@@ -274,11 +256,11 @@ class BenchmarkRunner:
 
             # Build metrics from profiler
             metrics = {
-                "api_calls_total": profiler.get_total_api_calls(),
-                "api_calls": profiler.api_calls.copy(),
+                "api_calls_total": profiler.total_api_calls,
+                "api_calls": dict(profiler.api_calls),
                 "cache_hits": profiler.cache_hits,
                 "cache_misses": profiler.cache_misses,
-                "cache_hit_rate": profiler.get_cache_hit_rate(),
+                "cache_hit_rate": profiler.cache_hit_rate,
                 "execution_time_seconds": execution_time,
                 "releases_found": len(releases),
                 "wall_time_seconds": execution_time
@@ -313,12 +295,11 @@ class BenchmarkRunner:
 
         if self.use_cassettes:
             # Use cassette mode (minimal API calls)
-            artist_ids = [artist['id'] for artist in fixture_data['artists']]
             cassette_name = f"{scenario_name}"
             metrics = self.run_track_with_cassette(
                 cassette_name=cassette_name,
                 cutoff_date=fixture_data['cutoff_date'],
-                artist_ids=artist_ids
+                artists=fixture_data['artists']
             )
         else:
             # Use subprocess mode (runs actual CLI)
