@@ -114,6 +114,13 @@ class ArtistDatabase:
             ''')
 
             # Create indexes for faster cache lookups
+            # Composite index for optimal cache query performance
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_releases_artist_date_fetch
+                ON releases_cache(artist_id, release_date, fetched_at)
+            ''')
+
+            # Legacy indexes (kept for backwards compatibility)
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_releases_artist_date
                 ON releases_cache(artist_id, release_date)
@@ -122,6 +129,12 @@ class ArtistDatabase:
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_releases_fetched
                 ON releases_cache(fetched_at)
+            ''')
+
+            # Index for track_id lookups (used in deduplication)
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_releases_track_id
+                ON releases_cache(track_id)
             ''')
 
             # Create ISRC lookup cache table (immutable, no expiry)
@@ -430,14 +443,59 @@ class ArtistDatabase:
         except sqlite3.Error as e:
             raise DatabaseError(f"Failed to cache release: {e}") from e
 
-    def get_cached_releases(self, artist_id: str, cutoff_date: str, max_age_hours: int = 24) -> List[dict]:
+    def _calculate_adaptive_ttl(self, artist_id: str) -> int:
+        """
+        Calculate adaptive cache TTL based on artist activity.
+
+        Active artists (recent releases): 6 hours
+        Moderate activity: 24 hours
+        Inactive (no recent releases): 7 days (168 hours)
+
+        Args:
+            artist_id: Spotify artist ID
+
+        Returns:
+            Cache TTL in hours
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Get the most recent release date for this artist
+                cursor.execute('''
+                    SELECT MAX(release_date) FROM releases_cache
+                    WHERE artist_id = ?
+                ''', (artist_id,))
+
+                result = cursor.fetchone()
+                if not result or not result[0]:
+                    return 24  # Default to 24 hours if no data
+
+                last_release_str = result[0]
+                last_release_date = datetime.fromisoformat(last_release_str) if 'T' not in last_release_str else datetime.strptime(last_release_str, '%Y-%m-%d')
+
+                days_since_release = (datetime.now() - last_release_date).days
+
+                # Adaptive TTL based on activity
+                if days_since_release < 30:
+                    return 6  # Active: check frequently
+                elif days_since_release < 180:
+                    return 24  # Moderate: standard check
+                else:
+                    return 168  # Inactive: cache longer (7 days)
+
+        except Exception as e:
+            logger.warning(f"Error calculating adaptive TTL for artist {artist_id}: {e}")
+            return 24  # Default fallback
+
+    def get_cached_releases(self, artist_id: str, cutoff_date: str, max_age_hours: Optional[int] = None) -> List[dict]:
         """
         Get cached releases for an artist within the date range, if cache is fresh.
 
         Args:
             artist_id: Spotify artist ID
             cutoff_date: Minimum release date to consider (YYYY-MM-DD)
-            max_age_hours: Maximum age of cache in hours (default: 24)
+            max_age_hours: Maximum age of cache in hours (default: None, uses adaptive TTL)
 
         Returns:
             List of cached release dictionaries, or empty list if cache is stale
@@ -445,6 +503,11 @@ class ArtistDatabase:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+
+                # Use adaptive TTL if not specified
+                if max_age_hours is None:
+                    max_age_hours = self._calculate_adaptive_ttl(artist_id)
+                    logger.debug(f"Using adaptive TTL of {max_age_hours}h for artist {artist_id}")
 
                 # Calculate cache expiry time
                 from datetime import timedelta

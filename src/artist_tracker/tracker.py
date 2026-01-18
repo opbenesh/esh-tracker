@@ -13,10 +13,14 @@ import os
 import re
 import sys
 import time
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple, Union
 from dotenv import load_dotenv
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import spotipy
 from spotipy.exceptions import SpotifyException
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
@@ -60,6 +64,98 @@ def setup_logging(verbose: bool = False):
     root_logger.addHandler(console_handler)
 
 logger = logging.getLogger(__name__)
+
+
+def create_optimized_session(pool_connections: int = 10, pool_maxsize: int = 20) -> requests.Session:
+    """
+    Create a requests session with connection pooling and retry logic.
+
+    Args:
+        pool_connections: Number of connection pools to cache
+        pool_maxsize: Maximum number of connections to save in the pool
+
+    Returns:
+        Configured requests.Session with connection pooling
+    """
+    session = requests.Session()
+
+    # Configure retry strategy
+    retry_strategy = Retry(
+        total=3,
+        backoff_factor=0.3,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"]
+    )
+
+    # Configure HTTP adapter with connection pooling
+    adapter = HTTPAdapter(
+        max_retries=retry_strategy,
+        pool_connections=pool_connections,
+        pool_maxsize=pool_maxsize
+    )
+
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    return session
+
+
+class LRUCache:
+    """Simple LRU (Least Recently Used) cache implementation."""
+
+    def __init__(self, capacity: int = 1000):
+        """
+        Initialize LRU cache.
+
+        Args:
+            capacity: Maximum number of items to store
+        """
+        self.cache = OrderedDict()
+        self.capacity = capacity
+
+    def get(self, key: str) -> Optional[any]:
+        """
+        Get value from cache, moving it to end (most recently used).
+
+        Args:
+            key: Cache key
+
+        Returns:
+            Cached value or None if not found
+        """
+        if key not in self.cache:
+            return None
+
+        # Move to end (most recently used)
+        self.cache.move_to_end(key)
+        return self.cache[key]
+
+    def put(self, key: str, value: any) -> None:
+        """
+        Put value in cache, evicting oldest if at capacity.
+
+        Args:
+            key: Cache key
+            value: Value to cache
+        """
+        if key in self.cache:
+            # Update existing key and move to end
+            self.cache.move_to_end(key)
+        else:
+            # Add new key
+            if len(self.cache) >= self.capacity:
+                # Remove oldest (first) item
+                self.cache.popitem(last=False)
+
+        self.cache[key] = value
+
+    def clear(self) -> None:
+        """Clear all cached items."""
+        self.cache.clear()
+
+    def size(self) -> int:
+        """Return current cache size."""
+        return len(self.cache)
 
 
 class DummyContext:
@@ -106,7 +202,9 @@ class SpotifyReleaseTracker:
         if spotify_client is not None:
             self.sp = spotify_client
         elif auth_manager is not None:
-            self.sp = spotipy.Spotify(auth_manager=auth_manager)
+            # Use optimized session with connection pooling
+            optimized_session = create_optimized_session()
+            self.sp = spotipy.Spotify(auth_manager=auth_manager, requests_session=optimized_session)
         else:
             if not client_id or not client_secret:
                  raise ValueError("Must provide client_id and client_secret if no client/auth_manager provided")
@@ -114,13 +212,19 @@ class SpotifyReleaseTracker:
                 client_id=client_id,
                 client_secret=client_secret
             )
-            self.sp = spotipy.Spotify(auth_manager=auth_manager)
+            # Use optimized session with connection pooling
+            optimized_session = create_optimized_session()
+            self.sp = spotipy.Spotify(auth_manager=auth_manager, requests_session=optimized_session)
 
         self.lookback_days = lookback_days if lookback_days is not None else self.LOOKBACK_DAYS
         self.cutoff_date = datetime.now() - timedelta(days=self.lookback_days)
         self.profiler = profiler
         self.db = db
         self.force_refresh = force_refresh
+
+        # Initialize in-memory cache for releases (LRU with 1000 item capacity)
+        self._memory_cache = LRUCache(capacity=1000)
+
         logger.info(f"Initialized tracker with cutoff date: {self.cutoff_date.date()} ({self.lookback_days} days)")
 
     def _call_api(self, endpoint: str, func, *args, **kwargs):
@@ -369,7 +473,15 @@ class SpotifyReleaseTracker:
                 earliest_date = self._parse_release_date(cached_result[0])
                 return earliest_date, cached_result[1]
 
-        # Check session cache (avoid redundant API calls within a session)
+        # Check memory cache (avoid redundant API calls within and across sessions)
+        isrc_cache_key = f"isrc:{isrc}"
+        memory_cached = self._memory_cache.get(isrc_cache_key)
+        if memory_cached is not None:
+            if self.profiler:
+                self.profiler.record_cache_hit()
+            return memory_cached
+
+        # Check session cache (backwards compatibility, deprecated in favor of memory cache)
         if not hasattr(self, '_isrc_info_cache'):
             self._isrc_info_cache: Dict[str, Tuple[Optional[datetime], Optional[str]]] = {}
 
@@ -412,13 +524,17 @@ class SpotifyReleaseTracker:
                     except Exception as cache_error:
                         logger.warning(f"Failed to cache ISRC lookup for '{isrc}': {cache_error}")
 
-            # Cache the result in session cache
-            self._isrc_info_cache[isrc] = (earliest_date, earliest_album_name)
+            # Cache the result in memory cache (primary) and session cache (fallback)
+            result = (earliest_date, earliest_album_name)
+            self._memory_cache.put(isrc_cache_key, result)
+            self._isrc_info_cache[isrc] = result
             return earliest_date, earliest_album_name
 
         except Exception as e:
             logger.warning(f"Error searching ISRC '{isrc}': {e}")
-            self._isrc_info_cache[isrc] = (None, None)
+            result = (None, None)
+            self._memory_cache.put(isrc_cache_key, result)
+            self._isrc_info_cache[isrc] = result
             return None, None
 
     def _get_recent_releases(
@@ -438,9 +554,26 @@ class SpotifyReleaseTracker:
         Returns:
             List of release dictionaries with deduplication
         """
-        # Check cache first if available and not forcing refresh
+        cutoff_date_str = self.cutoff_date.strftime('%Y-%m-%d')
+        cache_key = f"{artist_id}:{cutoff_date_str}"
+
+        # Check memory cache first (fastest)
+        if not self.force_refresh:
+            memory_cached = self._memory_cache.get(cache_key)
+            if memory_cached is not None:
+                logger.debug(f"Memory cache hit for artist '{artist_name}'")
+                if self.profiler:
+                    self.profiler.record_cache_hit()
+
+                # Apply max_tracks cap if specified
+                releases = memory_cached
+                if max_tracks and len(releases) > max_tracks:
+                    releases = sorted(releases, key=lambda x: x['popularity'], reverse=True)[:max_tracks]
+
+                return releases
+
+        # Check database cache second if available and not forcing refresh
         if self.db and not self.force_refresh:
-            cutoff_date_str = self.cutoff_date.strftime('%Y-%m-%d')
             cached_releases = self.db.get_cached_releases(artist_id, cutoff_date_str)
 
             if cached_releases:
@@ -465,6 +598,9 @@ class SpotifyReleaseTracker:
                         'album_id': cached['album_id'],
                         'track_id': cached['track_id']
                     })
+
+                # Store in memory cache for faster future access
+                self._memory_cache.put(cache_key, releases)
 
                 # Apply max_tracks cap if specified
                 if max_tracks and len(releases) > max_tracks:
@@ -522,6 +658,9 @@ class SpotifyReleaseTracker:
             logger.debug(f"Processing {len(albums_to_process)} albums for '{artist_name}'")
 
             # Now process the albums we collected
+            # Note: Parallel processing is complex due to shared state (seen_isrcs)
+            # The current sequential approach is safer and still benefits from
+            # connection pooling and caching optimizations
             for album, release_date in albums_to_process:
 
                 # Check for noise in album title
@@ -646,6 +785,10 @@ class SpotifyReleaseTracker:
                         self.db.cache_release(cache_data)
                     except Exception as e:
                         logger.warning(f"Failed to cache release '{release['track']}': {e}")
+
+            # Store in memory cache for faster future access
+            if releases:
+                self._memory_cache.put(cache_key, releases)
 
             return releases
 
