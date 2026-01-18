@@ -1,0 +1,50 @@
+{
+  "benchmark_version": "1.0",
+  "timestamp": "2026-01-18T11:32:23.541518Z",
+  "environment": {
+    "python_version": "3.11.14 (main, Oct 10 2025, 08:54:04) [GCC 13.3.0]",
+    "platform": "linux"
+  },
+  "results": [
+    {
+      "scenario": "artists_small_cold",
+      "fixture": "Small benchmark set - 10 metal artists with varied release patterns",
+      "cache_mode": "cold",
+      "artist_count": 10,
+      "cutoff_date": "2024-12-31",
+      "timestamp": "2026-01-18T11:32:23.521140Z",
+      "metrics": {
+        "api_calls_total": 10,
+        "api_calls": {
+          "artist_albums": 10
+        },
+        "cache_hits": 0,
+        "cache_misses": 10,
+        "cache_hit_rate": 0.0,
+        "execution_time_seconds": 0.02527928352355957,
+        "releases_found": 0,
+        "wall_time_seconds": 0.02527928352355957
+      }
+    },
+    {
+      "scenario": "artists_small_hot",
+      "fixture": "Small benchmark set - 10 metal artists with varied release patterns",
+      "cache_mode": "hot",
+      "artist_count": 10,
+      "cutoff_date": "2024-12-31",
+      "timestamp": "2026-01-18T11:32:23.541368Z",
+      "metrics": {
+        "api_calls_total": 10,
+        "api_calls": {
+          "artist_albums": 10
+        },
+        "cache_hits": 0,
+        "cache_misses": 10,
+        "cache_hit_rate": 0.0,
+        "execution_time_seconds": 0.017301082611083984,
+        "releases_found": 0,
+        "wall_time_seconds": 0.017301082611083984
+      }
+    }
+  ]
+}

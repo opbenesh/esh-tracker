@@ -1,0 +1,378 @@
+{
+  "benchmark_type": "weekly_run_simulation",
+  "benchmark_version": "1.0",
+  "timestamp": "2026-01-18T11:57:39.733197Z",
+  "results": {
+    "fixture": "artists_small",
+    "artists_count": 10,
+    "cutoff_date": "2024-12-31",
+    "weeks": [
+      {
+        "week": 1,
+        "description": "Baseline run (90 days)",
+        "metrics": {
+          "api_calls_total": 10,
+          "api_calls": {
+            "artist_albums": 10
+          },
+          "cache_hits": 0,
+          "cache_misses": 10,
+          "cache_hit_rate": 0.0,
+          "execution_time_seconds": 0.06445097923278809,
+          "releases_found": 0,
+          "wall_time_seconds": 0.06445097923278809,
+          "lookback_days": 383,
+          "incremental_mode": false,
+          "activity_profiles": {
+            "2ye2Wgw4gimLv2eAKyk1NB": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "6mdiAmATAx73kdxrNrnlao": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "0ybFZ2Ab08V8hueghSXm6E": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "0GoxHToqK0nmiWJ56rbQnr": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "1IQ2e1buppatiN1bxUVkrk": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "1Dvfqq39HxvCJ3GvfeIFuT": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "2Lzlsup1VsOWssjMNYjbVj": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "2yEwvVSSSUkcLeSTNyHKh8": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "5M52tdBnJaKSvOpJGz8mfZ": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "05fG473iIaoy82BF1aGhL8": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            }
+          }
+        }
+      },
+      {
+        "week": 2,
+        "description": "Incremental run #1",
+        "metrics": {
+          "api_calls_total": 10,
+          "api_calls": {
+            "artist_albums": 10
+          },
+          "cache_hits": 0,
+          "cache_misses": 10,
+          "cache_hit_rate": 0.0,
+          "execution_time_seconds": 0.07168865203857422,
+          "releases_found": 0,
+          "wall_time_seconds": 0.07168865203857422,
+          "lookback_days": 1,
+          "incremental_mode": true,
+          "activity_profiles": {
+            "2ye2Wgw4gimLv2eAKyk1NB": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "6mdiAmATAx73kdxrNrnlao": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "0ybFZ2Ab08V8hueghSXm6E": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "0GoxHToqK0nmiWJ56rbQnr": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "1IQ2e1buppatiN1bxUVkrk": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "1Dvfqq39HxvCJ3GvfeIFuT": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "2Lzlsup1VsOWssjMNYjbVj": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "2yEwvVSSSUkcLeSTNyHKh8": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "5M52tdBnJaKSvOpJGz8mfZ": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "05fG473iIaoy82BF1aGhL8": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            }
+          }
+        }
+      },
+      {
+        "week": 3,
+        "description": "Incremental run #2",
+        "metrics": {
+          "api_calls_total": 10,
+          "api_calls": {
+            "artist_albums": 10
+          },
+          "cache_hits": 0,
+          "cache_misses": 10,
+          "cache_hit_rate": 0.0,
+          "execution_time_seconds": 0.06213259696960449,
+          "releases_found": 0,
+          "wall_time_seconds": 0.06213259696960449,
+          "lookback_days": 1,
+          "incremental_mode": true,
+          "activity_profiles": {
+            "2ye2Wgw4gimLv2eAKyk1NB": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "6mdiAmATAx73kdxrNrnlao": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "0ybFZ2Ab08V8hueghSXm6E": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "0GoxHToqK0nmiWJ56rbQnr": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "1IQ2e1buppatiN1bxUVkrk": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "1Dvfqq39HxvCJ3GvfeIFuT": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "2Lzlsup1VsOWssjMNYjbVj": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "2yEwvVSSSUkcLeSTNyHKh8": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "5M52tdBnJaKSvOpJGz8mfZ": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "05fG473iIaoy82BF1aGhL8": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            }
+          }
+        }
+      },
+      {
+        "week": 4,
+        "description": "Incremental run #3",
+        "metrics": {
+          "api_calls_total": 10,
+          "api_calls": {
+            "artist_albums": 10
+          },
+          "cache_hits": 0,
+          "cache_misses": 10,
+          "cache_hit_rate": 0.0,
+          "execution_time_seconds": 0.05946755409240723,
+          "releases_found": 0,
+          "wall_time_seconds": 0.05946755409240723,
+          "lookback_days": 1,
+          "incremental_mode": true,
+          "activity_profiles": {
+            "2ye2Wgw4gimLv2eAKyk1NB": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "6mdiAmATAx73kdxrNrnlao": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "0ybFZ2Ab08V8hueghSXm6E": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "0GoxHToqK0nmiWJ56rbQnr": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "1IQ2e1buppatiN1bxUVkrk": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "1Dvfqq39HxvCJ3GvfeIFuT": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "2Lzlsup1VsOWssjMNYjbVj": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "2yEwvVSSSUkcLeSTNyHKh8": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "5M52tdBnJaKSvOpJGz8mfZ": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            },
+            "05fG473iIaoy82BF1aGhL8": {
+              "last_release_days_ago": 9999,
+              "avg_releases_per_year": 0,
+              "release_frequency": "inactive",
+              "recommended_check_interval_days": 30,
+              "total_releases": 0
+            }
+          }
+        }
+      }
+    ],
+    "summary": {
+      "baseline_total_api_calls_4_weeks": 40,
+      "incremental_total_api_calls_4_weeks": 40,
+      "total_reduction_percent": 0.0,
+      "avg_incremental_lookback_days": 1.0
+    }
+  }
+}
