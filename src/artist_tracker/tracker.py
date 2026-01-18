@@ -459,7 +459,11 @@ class SpotifyReleaseTracker:
                         'album_type': cached['album_type'],
                         'isrc': cached['isrc'] or 'N/A',
                         'spotify_url': cached['spotify_url'],
-                        'popularity': cached['popularity']
+                        'popularity': cached['popularity'],
+                        # Internal IDs for caching and ID format
+                        'artist_id': cached['artist_id'],
+                        'album_id': cached['album_id'],
+                        'track_id': cached['track_id']
                     })
 
                 # Apply max_tracks cap if specified
