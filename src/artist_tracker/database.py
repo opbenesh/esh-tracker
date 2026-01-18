@@ -9,7 +9,7 @@ import json
 import re
 import sqlite3
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import logging
 
 from .exceptions import DatabaseError, ValidationError
@@ -145,6 +145,26 @@ class ArtistDatabase:
                     earliest_album_name TEXT NOT NULL,
                     cached_at TEXT NOT NULL
                 )
+            ''')
+
+            # Create run history table for incremental updates
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS run_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_timestamp TEXT NOT NULL,
+                    artists_tracked INTEGER,
+                    releases_found INTEGER,
+                    lookback_days INTEGER,
+                    status TEXT DEFAULT 'completed',
+                    duration_seconds REAL,
+                    api_calls_made INTEGER
+                )
+            ''')
+
+            # Create index for run history queries
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_run_history_timestamp
+                ON run_history(run_timestamp DESC)
             ''')
 
             conn.commit()
@@ -487,6 +507,237 @@ class ArtistDatabase:
         except Exception as e:
             logger.warning(f"Error calculating adaptive TTL for artist {artist_id}: {e}")
             return 24  # Default fallback
+
+    def get_last_run_timestamp(self) -> Optional[datetime]:
+        """
+        Get timestamp of last successful run.
+
+        Returns:
+            Datetime of last run, or None if no runs recorded
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT run_timestamp FROM run_history
+                    WHERE status = 'completed'
+                    ORDER BY run_timestamp DESC LIMIT 1
+                ''')
+
+                result = cursor.fetchone()
+                if result:
+                    return datetime.fromisoformat(result[0])
+                return None
+
+        except Exception as e:
+            logger.warning(f"Error getting last run timestamp: {e}")
+            return None
+
+    def record_run(self, artists_tracked: int, releases_found: int,
+                   lookback_days: int, duration_seconds: float = 0.0,
+                   api_calls_made: int = 0) -> None:
+        """
+        Record a successful run for incremental update tracking.
+
+        Args:
+            artists_tracked: Number of artists tracked in this run
+            releases_found: Number of releases found
+            lookback_days: Lookback window used
+            duration_seconds: How long the run took
+            api_calls_made: Number of API calls made
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    INSERT INTO run_history
+                    (run_timestamp, artists_tracked, releases_found, lookback_days,
+                     duration_seconds, api_calls_made, status)
+                    VALUES (?, ?, ?, ?, ?, ?, 'completed')
+                ''', (
+                    datetime.now().isoformat(),
+                    artists_tracked,
+                    releases_found,
+                    lookback_days,
+                    duration_seconds,
+                    api_calls_made
+                ))
+                conn.commit()
+                logger.info(f"Recorded run: {artists_tracked} artists, {releases_found} releases, {api_calls_made} API calls")
+
+        except Exception as e:
+            logger.warning(f"Error recording run: {e}")
+
+    def get_run_history(self, limit: int = 10) -> List[Dict]:
+        """
+        Get recent run history.
+
+        Args:
+            limit: Maximum number of runs to retrieve
+
+        Returns:
+            List of run history dictionaries
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT run_timestamp, artists_tracked, releases_found,
+                           lookback_days, duration_seconds, api_calls_made, status
+                    FROM run_history
+                    ORDER BY run_timestamp DESC
+                    LIMIT ?
+                ''', (limit,))
+
+                runs = []
+                for row in cursor.fetchall():
+                    runs.append({
+                        'timestamp': row[0],
+                        'artists_tracked': row[1],
+                        'releases_found': row[2],
+                        'lookback_days': row[3],
+                        'duration_seconds': row[4],
+                        'api_calls_made': row[5],
+                        'status': row[6]
+                    })
+
+                return runs
+
+        except Exception as e:
+            logger.warning(f"Error getting run history: {e}")
+            return []
+
+    def get_artist_activity_profile(self, artist_id: str) -> Dict:
+        """
+        Analyze artist's release pattern to optimize checking frequency.
+
+        Returns:
+            Dictionary with activity metrics and recommendations:
+            - last_release_days_ago: Days since last release
+            - avg_releases_per_year: Average release rate
+            - release_frequency: 'high'|'medium'|'low'|'inactive'
+            - recommended_check_interval_days: Suggested check frequency
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+
+                # Get all releases for this artist
+                cursor.execute('''
+                    SELECT release_date FROM releases_cache
+                    WHERE artist_id = ?
+                    ORDER BY release_date DESC
+                ''', (artist_id,))
+
+                releases = []
+                for row in cursor.fetchall():
+                    try:
+                        releases.append(datetime.fromisoformat(row[0]) if 'T' not in row[0]
+                                      else datetime.strptime(row[0], '%Y-%m-%d'))
+                    except:
+                        pass
+
+                if not releases:
+                    return {
+                        'last_release_days_ago': 9999,
+                        'avg_releases_per_year': 0,
+                        'release_frequency': 'inactive',
+                        'recommended_check_interval_days': 30,
+                        'total_releases': 0
+                    }
+
+                last_release = releases[0]
+                days_since_last = (datetime.now() - last_release).days
+
+                # Calculate release frequency
+                if len(releases) > 1:
+                    date_range_days = (releases[0] - releases[-1]).days
+                    avg_per_year = (len(releases) / max(date_range_days, 1)) * 365
+                else:
+                    avg_per_year = 0
+
+                # Classify frequency
+                if avg_per_year > 4 and days_since_last < 180:
+                    frequency = 'high'
+                    check_interval = 7  # Weekly
+                elif avg_per_year > 1 and days_since_last < 365:
+                    frequency = 'medium'
+                    check_interval = 14  # Bi-weekly
+                elif days_since_last < 730:
+                    frequency = 'low'
+                    check_interval = 30  # Monthly
+                else:
+                    frequency = 'inactive'
+                    check_interval = 90  # Quarterly
+
+                return {
+                    'last_release_days_ago': days_since_last,
+                    'avg_releases_per_year': round(avg_per_year, 2),
+                    'release_frequency': frequency,
+                    'recommended_check_interval_days': check_interval,
+                    'total_releases': len(releases)
+                }
+
+        except Exception as e:
+            logger.warning(f"Error getting activity profile for artist {artist_id}: {e}")
+            return {
+                'last_release_days_ago': 9999,
+                'avg_releases_per_year': 0,
+                'release_frequency': 'unknown',
+                'recommended_check_interval_days': 30,
+                'total_releases': 0
+            }
+
+    def get_new_releases_since_last_run(self, artist_id: str, cutoff_date: str) -> List[dict]:
+        """
+        Get only releases that were added since last run (delta-only).
+
+        Args:
+            artist_id: Spotify artist ID
+            cutoff_date: Minimum release date to consider
+
+        Returns:
+            List of releases added since last run
+        """
+        last_run = self.get_last_run_timestamp()
+        if not last_run:
+            # First run - everything is new
+            return self.get_cached_releases(artist_id, cutoff_date)
+
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute('''
+                    SELECT artist_id, album_id, track_id, isrc, release_date, album_name,
+                           track_name, album_type, popularity, spotify_url, fetched_at
+                    FROM releases_cache
+                    WHERE artist_id = ?
+                    AND release_date >= ?
+                    AND fetched_at > ?
+                    ORDER BY release_date DESC
+                ''', (artist_id, cutoff_date, last_run.isoformat()))
+
+                releases = []
+                for row in cursor.fetchall():
+                    releases.append({
+                        'artist_id': row[0],
+                        'album_id': row[1],
+                        'track_id': row[2],
+                        'isrc': row[3],
+                        'release_date': row[4],
+                        'album_name': row[5],
+                        'track_name': row[6],
+                        'album_type': row[7],
+                        'popularity': row[8],
+                        'spotify_url': row[9],
+                        'fetched_at': row[10]
+                    })
+
+                return releases
+
+        except Exception as e:
+            logger.warning(f"Error getting new releases since last run: {e}")
+            return []
 
     def get_cached_releases(self, artist_id: str, cutoff_date: str, max_age_hours: Optional[int] = None) -> List[dict]:
         """

@@ -185,7 +185,7 @@ class SpotifyReleaseTracker:
     def __init__(self, client_id: Optional[str] = None, client_secret: Optional[str] = None,
                  lookback_days: Optional[int] = None, profiler: Optional[PerformanceStats] = None,
                  db: Optional[ArtistDatabase] = None, force_refresh: bool = False,
-                 spotify_client=None, auth_manager=None):
+                 spotify_client=None, auth_manager=None, incremental: bool = False):
         """
         Initialize the tracker with Spotify credentials.
 
@@ -198,6 +198,7 @@ class SpotifyReleaseTracker:
             force_refresh: If True, bypass cache and fetch fresh data
             spotify_client: Optional pre-configured Spotify client (for testing/mocking)
             auth_manager: Optional pre-configured auth manager (e.g., SpotifyOAuth)
+            incremental: If True, only fetch releases since last run (for weekly schedules)
         """
         if spotify_client is not None:
             self.sp = spotify_client
@@ -216,7 +217,23 @@ class SpotifyReleaseTracker:
             optimized_session = create_optimized_session()
             self.sp = spotipy.Spotify(auth_manager=auth_manager, requests_session=optimized_session)
 
-        self.lookback_days = lookback_days if lookback_days is not None else self.LOOKBACK_DAYS
+        self.incremental = incremental
+
+        # Determine lookback window
+        if incremental and db:
+            last_run = db.get_last_run_timestamp()
+            if last_run:
+                # Override lookback to only check since last run
+                days_since_last_run = (datetime.now() - last_run).days
+                self.lookback_days = max(days_since_last_run + 1, 1)  # At least 1 day
+                logger.info(f"Incremental mode: checking {self.lookback_days} days since last run ({last_run.date()})")
+            else:
+                # First run - use default or provided lookback
+                self.lookback_days = lookback_days if lookback_days is not None else self.LOOKBACK_DAYS
+                logger.info(f"Incremental mode: first run, using full lookback of {self.lookback_days} days")
+        else:
+            self.lookback_days = lookback_days if lookback_days is not None else self.LOOKBACK_DAYS
+
         self.cutoff_date = datetime.now() - timedelta(days=self.lookback_days)
         self.profiler = profiler
         self.db = db
@@ -1146,6 +1163,55 @@ def cmd_track(args, tracker: SpotifyReleaseTracker):
         print(f"❌ Error: {results['error']}")
         return
 
+    # Apply delta-only filter if requested
+    if getattr(args, 'delta_only', False) and tracker.db:
+        if tracker.incremental and tracker.db.get_last_run_timestamp():
+            # Filter to only show releases added since last run
+            original_count = len(results['releases'])
+            delta_releases = []
+
+            for release in results['releases']:
+                # Check if this release was added since last run
+                artist_id = release.get('artist_id', '')
+                if artist_id:
+                    cutoff_date_str = tracker.cutoff_date.strftime('%Y-%m-%d')
+                    new_releases = tracker.db.get_new_releases_since_last_run(artist_id, cutoff_date_str)
+                    # Check if this release is in the new releases list
+                    if any(r['track_id'] == release.get('track_id') for r in new_releases):
+                        delta_releases.append(release)
+
+            results['releases'] = delta_releases
+            results['total_releases'] = len(delta_releases)
+
+            if original_count > 0:
+                print(f"ℹ️  Delta-only mode: showing {len(delta_releases)} new releases (filtered from {original_count} total)")
+        else:
+            print("ℹ️  Delta-only mode requires incremental mode and a previous run. Showing all releases.")
+
+    # Show activity profiles if requested
+    if getattr(args, 'show_activity', False) and tracker.db:
+        print("\n📊 Artist Activity Profiles:")
+        print("=" * 80)
+
+        # Get unique artist IDs from results
+        artist_ids = set()
+        for release in results['releases']:
+            if release.get('artist_id'):
+                artist_ids.add(release.get('artist_id'))
+
+        for artist_id in sorted(artist_ids):
+            profile = tracker.db.get_artist_activity_profile(artist_id)
+            artist_name = next((r['artist'] for r in results['releases'] if r.get('artist_id') == artist_id), 'Unknown')
+
+            print(f"\n{artist_name}:")
+            print(f"  Frequency: {profile['release_frequency']}")
+            print(f"  Last release: {profile['last_release_days_ago']} days ago")
+            print(f"  Avg releases/year: {profile['avg_releases_per_year']}")
+            print(f"  Recommended check interval: {profile['recommended_check_interval_days']} days")
+            print(f"  Total releases tracked: {profile['total_releases']}")
+
+        print("=" * 80)
+
     # Determine output format
     output_format = getattr(args, 'format', 'tsv')
 
@@ -1184,6 +1250,18 @@ def cmd_track(args, tracker: SpotifyReleaseTracker):
         tracker.profiler.finish()
         print("\n", file=sys.stderr)
         print(tracker.profiler.get_summary(), file=sys.stderr)
+
+    # Record run for incremental tracking (if database available)
+    if tracker.db:
+        api_calls = tracker.profiler.total_api_calls if tracker.profiler else 0
+        duration = tracker.profiler.total_duration if tracker.profiler else 0.0
+        tracker.db.record_run(
+            artists_tracked=results.get('artists_in_source', 0),
+            releases_found=results['total_releases'],
+            lookback_days=tracker.lookback_days,
+            duration_seconds=duration,
+            api_calls_made=api_calls
+        )
 
 
 def main():
@@ -1280,6 +1358,21 @@ Examples:
         action='store_true',
         help='Enable verbose logging to console'
     )
+    parser_track.add_argument(
+        '--incremental',
+        action='store_true',
+        help='Incremental mode: only fetch releases since last run (optimized for weekly schedules)'
+    )
+    parser_track.add_argument(
+        '--delta-only',
+        action='store_true',
+        help='Delta-only: show only releases added since last run (requires database)'
+    )
+    parser_track.add_argument(
+        '--show-activity',
+        action='store_true',
+        help='Show artist activity profiles (release frequency and recommendations)'
+    )
 
     args = parser.parse_args()
 
@@ -1359,7 +1452,8 @@ Examples:
         profiler=profiler,
         db=db,
         force_refresh=getattr(args, 'force_refresh', False),
-        auth_manager=auth_manager
+        auth_manager=auth_manager,
+        incremental=getattr(args, 'incremental', False)
     )
 
     # Execute command
