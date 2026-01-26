@@ -1142,8 +1142,24 @@ def cmd_track(args, tracker: SpotifyReleaseTracker):
         # Check for redirect URI (required for OAuth)
         if not os.getenv('SPOTIPY_REDIRECT_URI'):
              # If running in a headless env without redirect URI, we can't easily do OAuth flow
-             # But let's try anyway, maybe the user has a cached token
-             pass
+             # Check if we have a valid token (or can refresh one)
+             token_valid = False
+             try:
+                 auth_manager = tracker.sp.auth_manager
+                 token_info = auth_manager.get_cached_token()
+                 if auth_manager.validate_token(token_info):
+                     token_valid = True
+             except Exception:
+                 token_valid = False
+
+             if not token_valid:
+                 logger.warning("SPOTIPY_REDIRECT_URI not set and no valid cached session found.")
+                 logger.warning("Authentication will attempt to use default: http://localhost:8888/callback")
+
+                 print("⚠️  Warning: SPOTIPY_REDIRECT_URI is not set and no valid cached session found.", file=sys.stderr)
+                 print("   Authentication will default to 'http://localhost:8888/callback'.", file=sys.stderr)
+                 print("   If your Spotify App is configured differently, please set SPOTIPY_REDIRECT_URI.", file=sys.stderr)
+                 print("   You will need to copy the URL below to a browser to authorize.", file=sys.stderr)
 
         results = tracker.track_liked_songs(args.max_per_artist)
 
